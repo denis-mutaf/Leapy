@@ -1,7 +1,7 @@
 # Leapy — Project Documentation
 
 > Справочный документ для продолжения разработки в новом чате.
-> Последнее обновление: март 2026.
+> Последнее обновление: март 2026 (актуально).
 
 ---
 
@@ -52,9 +52,10 @@
 
 ### Фронтенд (`leapy-admin`)
 - **Framework:** Next.js 15 (App Router), JavaScript (не TypeScript)
-- **Стили:** Tailwind CSS 3
+- **Стили:** Tailwind CSS 3 + CSS custom properties (градиенты бренда)
+- **Шрифт:** Inter Tight (Google Fonts, через `next/font/google`)
 - **Конфиги:** `postcss.config.cjs`, `tailwind.config.cjs` (`.cjs` из-за конфликта с корневым `"type": "module"`)
-- **Деплой:** Vercel
+- **Деплой:** Vercel, ветка `main` репо `denis-mutaf/leapy-admin`
 
 ---
 
@@ -110,6 +111,8 @@ src/
 | GET | `/rag/documents/:id` | Получить документ |
 | DELETE | `/rag/documents/:id` | Удалить документ + чанки |
 | POST | `/rag/search` | Семантический поиск (`query`, `limit`, `threshold`) |
+| POST | `/rag/generate-title` | Генерация названия документа через Claude (multipart: `file`) → `{ title }` |
+| POST | `/rag/ask` | RAG Q&A: поиск по базе + ответ Claude (`question`, `limit`, `threshold`) → `{ answer, sources }` |
 
 ---
 
@@ -186,6 +189,8 @@ POST /webhook
 - **Поиск:** cosine similarity через ivfflat индекс
 - **Поддерживаемые форматы:** PDF, DOCX, TXT, HTML, MD (макс 20MB)
 - **Хранение:** оригиналы в Supabase Storage `rag-documents`, чанки + embeddings в таблице `document_chunks`
+- **Генерация названий:** Claude `claude-haiku-4-5-20251001`, первые 4000 символов документа → короткое название (2–8 слов)
+- **Q&A (RAG Ask):** Claude `claude-haiku-4-5-20251001`, порог similarity по умолчанию 0.2, max_tokens 1000; отвечает только по контексту из базы знаний, если ничего не найдено — возвращает `sources: []` без галлюцинаций
 
 ---
 
@@ -208,6 +213,56 @@ POST /webhook
 
 ---
 
+## Admin-панель (leapy-admin)
+
+Расположена в папке `admin/` основного репо и в отдельном репо `denis-mutaf/leapy-admin`.
+
+### Дизайн (фирменный стиль LeadLeap)
+
+| Элемент | Значение |
+|---------|----------|
+| Шрифт | Inter Tight (400/500), `--font-inter-tight` |
+| Основной текст | `#242424` |
+| Фон страницы | `#FFFFFF` |
+| Фон секций/карточек | `#F8F8F8` |
+| Границы | `#E5E5E5` |
+| Основной градиент | `linear-gradient(135deg, #E040A0, #C850C0, #8B5CF6, #6366F1)` |
+| Мягкий градиент (hover) | `linear-gradient(135deg, rgba(224,64,160,0.08), rgba(139,92,246,0.08))` |
+| Радиус карточек | 16px |
+| Радиус кнопок | 12px |
+| Радиус инпутов | 8px |
+
+### Структура компонентов
+
+```
+admin/
+├── app/
+│   ├── layout.js          — Inter Tight, шапка (лого по центру), декор. блюр, футер
+│   ├── page.js            — сборка всех секций
+│   └── globals.css        — CSS-переменные градиентов, утилиты .btn-gradient, .bg-gradient-leadleap
+├── components/
+│   ├── UploadForm.jsx     — drag-and-drop зона, автогенерация названия через Claude
+│   ├── DocumentList.jsx   — таблица документов, статусные бейджи, удаление
+│   ├── AskAI.jsx          — раздел «Спросить AI» (RAG Q&A с источниками)
+│   └── SearchTest.jsx     — тест семантического поиска (сырые чанки)
+├── lib/
+│   └── api.js             — функции: uploadDocument, getDocuments, deleteDocument,
+│                            searchDocuments, generateTitle, askQuestion
+├── public/
+│   └── leadleap_logo.svg  — SVG логотип (замени на финальный файл)
+├── tailwind.config.cjs    — расширен: цвета бренда, радиусы, шрифт
+└── .env.local             — NEXT_PUBLIC_API_URL=https://leapy-production.up.railway.app
+```
+
+### Секции страницы (сверху вниз)
+
+1. **Загрузка документа** — drag-and-drop зона с пунктирной градиентной рамкой; при выборе файла автоматически запускается генерация названия через `/rag/generate-title` (спиннер в поле)
+2. **Документы** — таблица на карточке; бейджи статусов (Готов / Обработка / Ошибка); hover строк с мягким градиентом; подтверждение удаления
+3. **Спросить AI** — поле вопроса + кнопка «Спросить»; ответ Claude на карточке с градиентным фоном; список источников с процентом совпадения
+4. **Тест поиска** — семантический поиск, возвращает сырые чанки с бейджами схожести
+
+---
+
 ## Что ещё не сделано / TODO
 
 - [ ] Авторизация в админке (сейчас публичная)
@@ -216,3 +271,4 @@ POST /webhook
 - [ ] Интеграция RAG в анализ звонков (поиск по базе знаний при обработке звонка)
 - [ ] Уведомления менеджерам (Telegram/email)
 - [ ] RLS в Supabase (сейчас отключён)
+- [ ] Заменить `admin/public/leadleap_logo.svg` на финальный файл логотипа
