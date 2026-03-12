@@ -4,6 +4,7 @@ import { useState } from 'react';
 import UploadForm from '@/components/UploadForm';
 import DocumentList from '@/components/DocumentList';
 import SearchTest from '@/components/SearchTest';
+import AskAI from '@/components/AskAI';
 
 export default function Page() {
   const [refreshKey, setRefreshKey] = useState(0);
@@ -12,6 +13,7 @@ export default function Page() {
     <>
       <UploadForm onUploaded={() => setRefreshKey((k) => k + 1)} />
       <DocumentList refreshKey={refreshKey} />
+      <AskAI />
       <SearchTest />
     </>
   );

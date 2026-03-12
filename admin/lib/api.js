@@ -100,3 +100,21 @@ export async function searchDocuments(query, limit = 5, threshold = 0.3) {
   const data = await parseResponse(res);
   return data.results;
 }
+
+/**
+ * Ask a question — RAG search + Claude answer.
+ *
+ * @param {string} question
+ * @param {number} [limit]
+ * @param {number} [threshold]
+ * @returns {Promise<{ answer: string, sources: Array<{ document_title: string, content_preview: string, similarity: number }> }>}
+ */
+export async function askQuestion(question, limit = 5, threshold = 0.2) {
+  const res = await fetch(`${API_BASE}/rag/ask`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, limit, threshold }),
+  });
+  const data = await parseResponse(res);
+  return { answer: data.answer, sources: data.sources };
+}
