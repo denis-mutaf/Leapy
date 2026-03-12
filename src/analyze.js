@@ -307,6 +307,7 @@ async function evaluateManager(transcript, ragContext) {
   try {
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
+      language: 'ro',
       max_tokens: 800,
       system: EVALUATION_SYSTEM_PROMPT,
       messages: [

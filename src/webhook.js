@@ -91,7 +91,8 @@ async function transcribeAudio(filePath) {
   const transcription = await openai.audio.transcriptions.create({
     file: fs.createReadStream(filePath),
     model: 'gpt-4o-mini-transcribe',
-    prompt: 'Диалог между двумя людьми. Разговор может быть на русском, румынском, или смешанный. Транскрибируй обе стороны.',
+    language: 'ro',
+    prompt: 'IsraGrup, Дурлешты, Durlești, Select New Town, Next New Town, apartament, cameră, rată, avans, ipotecă, рассрочка, первый взнос, квартира, однокомнатная, двухкомнатная, этаж, парковка, bloc locativ, complex rezidențial, preț, euro, metri pătrați.',
   });
   return transcription.text;
 }
