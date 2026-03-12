@@ -22,6 +22,7 @@ import {
   saveEvaluation,
   saveCallInsights,
   updateClientProfile,
+  updateClientAmoContactId,
   incrementClientCalls,
   getPreviousCallSummaries,
   uploadAudio,
@@ -264,9 +265,11 @@ export async function handleWebhook(req, res) {
 
     // Save AMO contact ID to client
     if (contactId && !client.amo_contact_id) {
-      const { createClient: sc } = await import('@supabase/supabase-js');
-      const supa = sc(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-      await supa.from('clients').update({ amo_contact_id: contactId }).eq('id', client.id).catch(() => {});
+      try {
+        await updateClientAmoContactId(client.id, contactId);
+      } catch (e) {
+        console.error(`[DB] Ошибка сохранения amo_contact_id:`, e.message);
+      }
     }
 
     // Post note

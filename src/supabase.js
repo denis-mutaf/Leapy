@@ -156,6 +156,22 @@ export async function updateClientProfile(clientId, insights, clientName) {
 }
 
 /**
+ * Update client's AmoCRM contact ID.
+ *
+ * @param {string} clientId
+ * @param {number} amoContactId
+ * @returns {Promise<void>}
+ */
+export async function updateClientAmoContactId(clientId, amoContactId) {
+  const { error } = await supabase
+    .from('clients')
+    .update({ amo_contact_id: amoContactId })
+    .eq('id', clientId);
+
+  if (error) throw new Error(`[DB] Ошибка обновления amo_contact_id: ${error.message}`);
+}
+
+/**
  * Increment total_calls counter for a client.
  *
  * @param {string} clientId
