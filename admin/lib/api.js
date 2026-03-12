@@ -22,6 +22,25 @@ async function parseResponse(res) {
 }
 
 /**
+ * Generate a document title from file content using Claude.
+ *
+ * @param {File} file
+ * @returns {Promise<{ title: string }>}
+ */
+export async function generateTitle(file) {
+  const form = new FormData();
+  form.append('file', file);
+
+  const res = await fetch(`${API_BASE}/rag/generate-title`, {
+    method: 'POST',
+    body: form,
+  });
+
+  const data = await parseResponse(res);
+  return data;
+}
+
+/**
  * Upload a document to the RAG backend.
  *
  * @param {File} file

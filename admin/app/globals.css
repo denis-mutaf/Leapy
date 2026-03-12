@@ -2,8 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --color-text: #242424;
+  --color-page: #FFFFFF;
+  --color-section: #F8F8F8;
+  --color-border: #E5E5E5;
+  --gradient-main: linear-gradient(135deg, #E040A0, #C850C0, #8B5CF6, #6366F1);
+  --gradient-soft: linear-gradient(135deg, rgba(224, 64, 160, 0.08), rgba(139, 92, 246, 0.08));
+  --gradient-alt: linear-gradient(135deg, #F472B6, #C084FC, #818CF8);
+}
+
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-900 antialiased;
+    @apply bg-page text-text antialiased;
+    color: var(--color-text);
+  }
+}
+
+@layer utilities {
+  .bg-gradient-leadleap {
+    background: var(--gradient-main);
+  }
+  .bg-gradient-soft {
+    background: var(--gradient-soft);
+  }
+  .bg-gradient-alt {
+    background: var(--gradient-alt);
+  }
+  .border-gradient-leadleap {
+    border: 2px dashed transparent;
+    background: linear-gradient(white, white) padding-box,
+                var(--gradient-main) border-box;
+  }
+  .ring-gradient-leadleap:focus-within {
+    box-shadow: 0 0 0 2px white, 0 0 0 4px transparent;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    background: linear-gradient(white, white) padding-box,
+                var(--gradient-main) border-box;
+  }
+  .btn-gradient {
+    background: var(--gradient-main);
+    color: white;
+    transition: filter 0.2s ease, transform 0.2s ease;
+  }
+  .btn-gradient:hover:not(:disabled) {
+    filter: brightness(1.1);
+    transform: scale(1.02);
+  }
+  .transition-default {
+    transition: all 0.2s ease;
   }
 }
