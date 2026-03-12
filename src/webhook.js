@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { pipeline } from 'stream/promises';
 import axios from 'axios';
+import OpenAI from 'openai';
 import {
   searchByPhone,
   createContactWithLead,
@@ -27,8 +28,7 @@ import {
   uploadAudio,
 } from './supabase.js';
 
-const GLADIA_API_KEY = process.env.GLADIA_API_KEY;
-const GLADIA_BASE_URL = 'https://api.gladia.io/v2';
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const CALL_TYPE_LABEL = { in: 'Входящий', out: 'Исходящий' };
 
@@ -87,89 +87,13 @@ async function downloadMp3(url, callid) {
   return tmpPath;
 }
 
-/**
- * Transcribe audio using Gladia API with code switching (ru/ro) and diarization.
- * Gladia accepts audio URL directly — no need to upload the file.
- *
- * @param {string} audioUrl - public URL of the MP3 recording (from PBX)
- * @returns {Promise<string>} formatted transcript with speaker labels
- */
-async function transcribeAudio(audioUrl) {
-  // 1. Initiate transcription job
-  const { data: initData } = await axios.post(
-    `${GLADIA_BASE_URL}/pre-recorded`,
-    {
-      audio_url: audioUrl,
-      diarization: true,
-      diarization_config: {
-        min_speakers: 2,
-        max_speakers: 2,
-      },
-      language_config: {
-        languages: ['ru', 'ro'],
-        code_switching: true,
-      },
-    },
-    {
-      headers: {
-        'x-gladia-key': GLADIA_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      timeout: 30_000,
-    }
-  );
-
-  const resultUrl = initData.result_url;
-  const jobId = initData.id;
-  console.log(`[GLADIA] Задание создано: ${jobId}`);
-
-  // 2. Poll for result
-  const MAX_ATTEMPTS = 60;
-  const POLL_INTERVAL = 3000; // 3 sec
-
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL));
-
-    const { data: result } = await axios.get(resultUrl, {
-      headers: { 'x-gladia-key': GLADIA_API_KEY },
-      timeout: 15_000,
-    });
-
-    if (result.status === 'done') {
-      console.log(`[GLADIA] Транскрипция готова (попытка ${attempt + 1})`);
-      return formatGladiaTranscript(result.result);
-    }
-
-    if (result.status === 'error') {
-      throw new Error(`Gladia error: ${result.error_message || 'unknown'}`);
-    }
-
-    // status is 'queued' or 'processing' — keep polling
-  }
-
-  throw new Error('Gladia: таймаут ожидания результата (3 мин)');
-}
-
-/**
- * Format Gladia result into readable transcript with speaker labels.
- *
- * @param {Object} result - Gladia transcription result
- * @returns {string}
- */
-function formatGladiaTranscript(result) {
-  const utterances = result?.transcription?.utterances;
-
-  if (!utterances || utterances.length === 0) {
-    return result?.transcription?.full_transcript || '';
-  }
-
-  // Map speaker indices to labels
-  const lines = utterances.map((u) => {
-    const speaker = u.speaker !== undefined ? `Спикер ${u.speaker + 1}` : '?';
-    return `[${speaker}]: ${u.text}`;
+async function transcribeAudio(filePath) {
+  const transcription = await openai.audio.transcriptions.create({
+    file: fs.createReadStream(filePath),
+    model: 'gpt-4o-mini-transcribe',
+    prompt: 'Диалог между двумя людьми. Разговор может быть на русском, румынском, или смешанный. Транскрибируй обе стороны.',
   });
-
-  return lines.join('\n');
+  return transcription.text;
 }
 
 /**
@@ -243,15 +167,15 @@ export async function handleWebhook(req, res) {
       console.error(`[DB] Ошибка загрузки аудио:`, uploadErr.message);
     }
 
-    // ── Transcribe via Gladia ──────────────────────────────────────────────
+    // ── Transcribe ───────────────────────────────────────────────────────────
     let transcript = '';
     try {
-      console.log('[WEBHOOK] Транскрибирую (Gladia)...');
-      transcript = await transcribeAudio(link);
+      console.log('[WEBHOOK] Транскрибирую...');
+      transcript = await transcribeAudio(tmpPath);
       await updateCall(callRecord.id, { transcript });
       console.log(`[WEBHOOK] Транскрипция: ${transcript.length} символов`);
-    } catch (transcribeErr) {
-      console.error(`[WEBHOOK] Ошибка транскрипции:`, transcribeErr.message);
+    } catch (whisperErr) {
+      console.error(`[WEBHOOK] Ошибка транскрипции:`, whisperErr.message);
       await updateCall(callRecord.id, { status: 'failed' });
       return;
     }
