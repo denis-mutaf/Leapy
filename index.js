@@ -21,12 +21,17 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (!origin || ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGINS.includes('*')) {
+  // If no allowlist configured — allow all origins (open CORS)
+  const allowed = ALLOWED_ORIGINS.length === 0
+    || ALLOWED_ORIGINS.includes('*')
+    || (origin && ALLOWED_ORIGINS.includes(origin));
+
+  if (allowed) {
     res.setHeader('Access-Control-Allow-Origin', origin || '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-    if (req.method === 'OPTIONS') return res.sendStatus(204);
   }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
 
