@@ -124,7 +124,6 @@ export async function handleWebhook(req, res) {
   let tmpPath = null;
 
   try {
-    // ── Client phone comes directly from Moldcell "phone" field ────────────
     const clientPhone = phone;
 
     // ── Find/create client in Supabase ───────────────────────────────────────
@@ -185,9 +184,10 @@ export async function handleWebhook(req, res) {
     const previousSummaries = await getPreviousCallSummaries(client.id);
 
     // ── Analyse with Claude ──────────────────────────────────────────────────
+    const isFirstContact = client.total_calls === 0;
     console.log('[WEBHOOK] Анализирую (Claude)...');
-    const analysis = await analyzeTranscript(transcript, client, previousSummaries);
-    console.log(`[WEBHOOK] Анализ: status=${analysis.status} name=${analysis.client_name} score=${analysis.evaluation.score_total} tags=${analysis.tags.join(', ')}`);
+    const analysis = await analyzeTranscript(transcript, client, previousSummaries, isFirstContact);
+    console.log(`[WEBHOOK] Анализ: status=${analysis.status} name=${analysis.client_name} score=${analysis.evaluation.score_total} first=${isFirstContact}`);
 
     // ── Save evaluation ──────────────────────────────────────────────────────
     if (manager) {
@@ -300,11 +300,17 @@ export async function handleWebhook(req, res) {
       );
     }
 
-    // Tags
-    if (analysis.tags.length > 0 && leadId) {
-      await updateLeadTags(leadId, analysis.tags).catch((e) =>
-        console.error(`[AMO] Ошибка тегов:`, e.message)
-      );
+    // Tags — только Квал, только при первом контакте
+    if (isFirstContact && leadId) {
+      const qualified = analysis.summary_metadata?.qualified !== false;
+      if (qualified) {
+        await updateLeadTags(leadId, ['Квал']).catch((e) =>
+          console.error(`[AMO] Ошибка тегов:`, e.message)
+        );
+        console.log(`[AMO] Тег "Квал" проставлен`);
+      } else {
+        console.log(`[AMO] Неквал — тег не ставим`);
+      }
     }
 
     // Follow-up task
