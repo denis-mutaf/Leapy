@@ -10,8 +10,9 @@ import {
   getDocument,
   deleteDocument,
   detectFileType,
-  extractText,
 } from './rag.js';
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const router = Router();
 
@@ -107,54 +108,6 @@ router.delete('/documents/:id', async (req, res) => {
   }
 });
 
-// ── POST /rag/generate-title — Generate document title with Claude ───────────
-
-const TITLE_EXCERPT_MAX = 4000;
-const anthropic = process.env.ANTHROPIC_API_KEY
-  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  : null;
-
-router.post('/generate-title', upload.single('file'), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'Файл не загружен' });
-  }
-  if (!anthropic) {
-    return res.status(503).json({ error: 'Генерация названия недоступна (нет ANTHROPIC_API_KEY)' });
-  }
-
-  const tmpPath = req.file.path;
-
-  try {
-    const fileType = detectFileType(req.file.originalname);
-    const fullText = await extractText(tmpPath, fileType);
-    const excerpt = (fullText || '').trim().slice(0, TITLE_EXCERPT_MAX);
-    if (!excerpt) {
-      return res.json({ title: req.file.originalname.replace(/\.[^.]+$/, '') });
-    }
-
-    const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 80,
-      system: 'Ты помогаешь давать короткие названия документам. Отвечай только названием на русском, 2–8 слов, без кавычек и точки.',
-      messages: [
-        {
-          role: 'user',
-          content: `По началу документа ниже предложи краткое название на русском (2–8 слов). Только название, без кавычек и точки.\n\nТекст:\n${excerpt}`,
-        },
-      ],
-    });
-
-    const raw = message.content[0]?.text ?? '';
-    const title = raw.trim().replace(/^["']|["']\.?$/g, '').trim() || req.file.originalname.replace(/\.[^.]+$/, '');
-    res.json({ title });
-  } catch (err) {
-    console.error('[RAG API] Ошибка генерации названия:', err.message);
-    res.status(500).json({ error: err.message });
-  } finally {
-    fs.unlink(tmpPath, () => {});
-  }
-});
-
 // ── POST /rag/search — Semantic search ─────────────────────────────────────────
 
 router.post('/search', async (req, res) => {
@@ -173,6 +126,77 @@ router.post('/search', async (req, res) => {
     res.json({ ok: true, results });
   } catch (err) {
     console.error(`[RAG API] Ошибка поиска:`, err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /rag/ask — Question answering with RAG context ────────────────────────
+
+const RAG_SYSTEM_PROMPT = `Ты — AI-ассистент компании Isragrup (застройщик в Молдове, Кишинёв).
+Твоя задача — отвечать на вопросы, используя ТОЛЬКО предоставленный контекст из базы знаний.
+
+Правила:
+- Отвечай на том языке, на котором задан вопрос (русский или румынский).
+- Если в контексте нет информации для ответа — честно скажи что не знаешь, не выдумывай.
+- Отвечай конкретно и по делу. Не добавляй информацию, которой нет в контексте.
+- Если вопрос касается цен или условий — приводи точные цифры из контекста.
+- Будь дружелюбным и профессиональным.`;
+
+router.post('/ask', async (req, res) => {
+  const { question, limit, threshold } = req.body;
+
+  if (!question || typeof question !== 'string' || question.trim().length === 0) {
+    return res.status(400).json({ error: 'Параметр question обязателен' });
+  }
+
+  try {
+    // 1. Search knowledge base
+    const results = await searchKnowledgeBase(question.trim(), {
+      limit: Number(limit) || 5,
+      threshold: Number(threshold) || 0.2,
+    });
+
+    if (results.length === 0) {
+      return res.json({
+        ok: true,
+        answer: 'К сожалению, в базе знаний нет информации по вашему вопросу.',
+        sources: [],
+      });
+    }
+
+    // 2. Build context from chunks
+    const contextParts = results.map((r, i) =>
+      `[Источник ${i + 1}: ${r.document_title}]\n${r.content}`
+    );
+    const context = contextParts.join('\n\n---\n\n');
+
+    // 3. Ask Claude with context
+    const message = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1000,
+      system: RAG_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: 'user',
+          content: `Контекст из базы знаний:\n\n${context}\n\n---\n\nВопрос: ${question.trim()}`,
+        },
+      ],
+    });
+
+    const answer = message.content[0].text;
+
+    // 4. Return answer with sources
+    const sources = results.map((r) => ({
+      document_title: r.document_title,
+      content_preview: r.content.substring(0, 200),
+      similarity: r.similarity,
+    }));
+
+    console.log(`[RAG API] Вопрос: "${question.trim()}" → ${results.length} источников`);
+
+    res.json({ ok: true, answer, sources });
+  } catch (err) {
+    console.error(`[RAG API] Ошибка /ask:`, err.message);
     res.status(500).json({ error: err.message });
   }
 });
