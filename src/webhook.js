@@ -87,8 +87,7 @@ async function downloadMp3(url, callid) {
 async function transcribeAudio(filePath) {
   const transcription = await openai.audio.transcriptions.create({
     file: fs.createReadStream(filePath),
-    model: 'whisper-1',
-    language: 'ru',
+    model: 'gpt-4o-mini-transcribe',
   });
   return transcription.text;
 }
