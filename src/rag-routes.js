@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import Anthropic from '@anthropic-ai/sdk';
 import {
   ingestDocument,
   searchKnowledgeBase,
@@ -9,6 +10,7 @@ import {
   getDocument,
   deleteDocument,
   detectFileType,
+  extractText,
 } from './rag.js';
 
 const router = Router();
@@ -102,6 +104,54 @@ router.delete('/documents/:id', async (req, res) => {
     console.error(`[RAG API] Ошибка удаления:`, err.message);
     const status = err.message.includes('не найден') ? 404 : 500;
     res.status(status).json({ error: err.message });
+  }
+});
+
+// ── POST /rag/generate-title — Generate document title with Claude ───────────
+
+const TITLE_EXCERPT_MAX = 4000;
+const anthropic = process.env.ANTHROPIC_API_KEY
+  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  : null;
+
+router.post('/generate-title', upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'Файл не загружен' });
+  }
+  if (!anthropic) {
+    return res.status(503).json({ error: 'Генерация названия недоступна (нет ANTHROPIC_API_KEY)' });
+  }
+
+  const tmpPath = req.file.path;
+
+  try {
+    const fileType = detectFileType(req.file.originalname);
+    const fullText = await extractText(tmpPath, fileType);
+    const excerpt = (fullText || '').trim().slice(0, TITLE_EXCERPT_MAX);
+    if (!excerpt) {
+      return res.json({ title: req.file.originalname.replace(/\.[^.]+$/, '') });
+    }
+
+    const message = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 80,
+      system: 'Ты помогаешь давать короткие названия документам. Отвечай только названием на русском, 2–8 слов, без кавычек и точки.',
+      messages: [
+        {
+          role: 'user',
+          content: `По началу документа ниже предложи краткое название на русском (2–8 слов). Только название, без кавычек и точки.\n\nТекст:\n${excerpt}`,
+        },
+      ],
+    });
+
+    const raw = message.content[0]?.text ?? '';
+    const title = raw.trim().replace(/^["']|["']\.?$/g, '').trim() || req.file.originalname.replace(/\.[^.]+$/, '');
+    res.json({ title });
+  } catch (err) {
+    console.error('[RAG API] Ошибка генерации названия:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    fs.unlink(tmpPath, () => {});
   }
 });
 
