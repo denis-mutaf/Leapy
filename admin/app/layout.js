@@ -1,5 +1,6 @@
 import { Inter_Tight } from 'next/font/google';
 import Image from 'next/image';
+import Link from 'next/link';
 import { ClerkProvider, UserButton } from '@clerk/nextjs';
 import './globals.css';
 
@@ -31,17 +32,38 @@ export default function RootLayout({ children }) {
           />
 
           <div className="min-h-screen flex flex-col">
-            <header className="sticky top-0 z-10 bg-page px-4 md:px-8 py-4">
-              <div className="max-w-5xl mx-auto flex items-center justify-center relative">
-                <Image
-                  src="/leadleap_logo.svg"
-                  alt="LeadLeap"
-                  width={140}
-                  height={40}
-                  className="h-auto w-[140px] object-contain"
-                  priority
-                />
-                <div className="absolute right-0 top-1/2 -translate-y-1/2">
+            <header className="sticky top-0 z-10 bg-page px-4 md:px-8 py-4 border-b border-border">
+              <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+                {/* Лого */}
+                <Link href="/" className="shrink-0">
+                  <Image
+                    src="/leadleap_logo.svg"
+                    alt="LeadLeap"
+                    width={120}
+                    height={34}
+                    className="h-auto w-[120px] object-contain"
+                    priority
+                  />
+                </Link>
+
+                {/* Навигация */}
+                <nav className="flex items-center gap-1">
+                  <Link
+                    href="/"
+                    className="rounded-lg px-3 py-1.5 text-sm text-text opacity-60 hover:opacity-100 transition-opacity"
+                  >
+                    База знаний
+                  </Link>
+                  <Link
+                    href="/briefs"
+                    className="rounded-lg px-3 py-1.5 text-sm text-text opacity-60 hover:opacity-100 transition-opacity"
+                  >
+                    Брифы
+                  </Link>
+                </nav>
+
+                {/* Кнопка пользователя */}
+                <div className="shrink-0">
                   <UserButton />
                 </div>
               </div>
