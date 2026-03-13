@@ -118,14 +118,3 @@ export async function askQuestion(question, limit = 5, threshold = 0.2) {
   const data = await parseResponse(res);
   return { answer: data.answer, sources: data.sources };
 }
-
-/**
- * Fetch all brief submissions (admin only).
- *
- * @returns {Promise<Array<{ id: string, slug: string, answers: object, created_at: string }>>}
- */
-export async function getBriefs() {
-  const res = await fetch(`${API_BASE}/briefs`, { cache: 'no-store' });
-  const data = await parseResponse(res);
-  return data;
-}
