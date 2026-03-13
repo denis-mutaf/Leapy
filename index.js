@@ -15,6 +15,23 @@ if (missing.length > 0) {
 
 const app = express();
 
+// CORS — разрешаем origins из ALLOWED_ORIGINS (запятая-разделённый список).
+// Если ALLOWED_ORIGINS не задан — разрешаем все origins.
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+  : [];
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allow = allowedOrigins.length === 0 || (origin && allowedOrigins.includes(origin));
+  if (allow && origin) res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+  res.setHeader('Vary', 'Origin');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -28,4 +45,5 @@ app.use('/briefs', briefsRoutes);
 app.listen(PORT, () => {
   console.log(`[SERVER] AI Listener запущен на порту ${PORT}`);
   console.log(`[SERVER] RAG API доступен на /rag`);
+  console.log(`[SERVER] Briefs API доступен на /briefs`);
 });
