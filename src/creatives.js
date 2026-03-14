@@ -353,4 +353,32 @@ router.post('/chat', async (req, res) => {
   }
 });
 
+// ── GET /creatives/history ─────────────────────────────────────────────────────
+
+router.get('/history', async (req, res) => {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+    return res.status(500).json({ error: 'SUPABASE_URL and SUPABASE_SERVICE_KEY are required' });
+  }
+  const url = `${SUPABASE_URL}/rest/v1/creative_generations?select=id,created_at,model_key,format,headline,image_url&order=created_at.desc&limit=50`;
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        apikey: SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Supabase request failed: ${response.status} ${errText}`);
+    }
+    const data = await response.json();
+    res.status(200).json(Array.isArray(data) ? data : []);
+  } catch (err) {
+    console.error('[CREATIVES] history error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
