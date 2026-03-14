@@ -1,6 +1,8 @@
 import { Inter_Tight } from 'next/font/google';
 import Image from 'next/image';
+import Link from 'next/link';
 import './globals.css';
+import NavLink from '@/components/NavLink';
 
 const interTight = Inter_Tight({
   weight: ['400', '500'],
@@ -10,7 +12,7 @@ const interTight = Inter_Tight({
 });
 
 export const metadata = {
-  title: 'LeadLeap — База знаний',
+  title: 'LeadLeap',
   description: 'Управление RAG базой знаний',
 };
 
@@ -30,19 +32,25 @@ export default function RootLayout({ children }) {
 
         <div className="min-h-screen flex flex-col">
           <header className="sticky top-0 z-10 bg-page px-4 md:px-8 py-4">
-            <div className="max-w-5xl mx-auto flex items-center justify-center">
-              <Image
-                src="/leadleap_logo.svg"
-                alt="LeadLeap"
-                width={140}
-                height={40}
-                className="h-auto w-[140px] object-contain"
-                priority
-              />
+            <div className="max-w-5xl mx-auto flex flex-col items-center justify-center gap-3">
+              <Link href="/" className="block">
+                <Image
+                  src="/leadleap_logo.svg"
+                  alt="LeadLeap"
+                  width={140}
+                  height={40}
+                  className="h-auto w-[140px] object-contain"
+                  priority
+                />
+              </Link>
+              <nav className="flex items-center justify-center gap-1">
+                <NavLink href="/" label="База знаний" />
+                <NavLink href="/creatives" label="Креативы" />
+              </nav>
             </div>
           </header>
 
-          <main className="max-w-5xl mx-auto w-full px-4 md:px-8 py-8 md:py-10 flex-1 space-y-14 md:space-y-16">
+          <main className="w-full flex-1">
             {children}
           </main>
 

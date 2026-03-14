@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import { handleWebhook } from './src/webhook.js';
 import ragRoutes from './src/rag-routes.js';
+import creativesRouter from './src/creatives.js';
 
 const PORT = process.env.PORT || 3000;
 
@@ -43,8 +44,10 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 app.post('/webhook', handleWebhook);
 
 app.use('/rag', ragRoutes);
+app.use('/creatives', creativesRouter);
 
 app.listen(PORT, () => {
   console.log(`[SERVER] AI Listener запущен на порту ${PORT}`);
   console.log(`[SERVER] RAG API доступен на /rag`);
+  console.log(`[SERVER] Creatives API доступен на /creatives`);
 });
