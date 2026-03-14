@@ -1,6 +1,18 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { cn } from '@/lib/utils';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Sparkles, Loader2, Download, RefreshCw, MessageSquare, SendHorizontal, Plus, X, History } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -15,7 +27,6 @@ const FORMATS = [
   { value: '9:16', label: 'Сторис' },
   { value: '16:9', label: 'Баннер' },
   { value: '4:5', label: 'Instagram' },
-  { value: '1:4', label: 'Вертикаль' },
 ];
 
 function FileDropZone({ title, accept, maxFiles, files, onFilesChange, className = '' }) {
@@ -48,17 +59,13 @@ function FileDropZone({ title, accept, maxFiles, files, onFilesChange, className
 
   return (
     <div className={className}>
-      <p className="text-sm font-medium text-text mb-2">{title}</p>
+      <Label className="text-xs font-medium text-muted-foreground">{title}</Label>
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
         onClick={() => inputRef.current?.click()}
-        className={`
-          min-h-[88px] rounded-xl border-2 border-dashed transition-default cursor-pointer
-          flex flex-col items-center justify-center gap-2 p-4
-          ${dragOver ? 'border-indigo-500 bg-indigo-500/10' : 'border-border bg-section hover:border-indigo-400/50'}
-        `}
+        className="border-2 border-dashed border-border rounded-xl py-4 px-3 text-center cursor-pointer hover:border-primary hover:bg-accent/30 transition-all duration-200 mt-1.5"
       >
         <input
           ref={inputRef}
@@ -68,26 +75,58 @@ function FileDropZone({ title, accept, maxFiles, files, onFilesChange, className
           className="hidden"
           onChange={(e) => { addFiles(e.target.files || []); e.target.value = ''; }}
         />
-        <span className="text-sm text-text opacity-70">Перетащи файлы или нажми для выбора</span>
-        <span className="text-xs text-text opacity-50">до {maxFiles} файлов</span>
+        <span className="text-xs text-muted-foreground">Перетащи файлы или нажми для выбора</span>
+        <span className="text-xs text-muted-foreground block">до {maxFiles} файлов</span>
       </div>
       {files.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap gap-1.5">
           {files.map((file, i) => (
             <span
               key={i}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-section border border-border text-sm text-text"
+              className="inline-flex items-center gap-1 bg-secondary text-secondary-foreground rounded-md px-2 py-0.5 text-xs"
             >
-              <span className="truncate max-w-[140px]">{file.name}</span>
+              <span className="truncate max-w-[120px]">{file.name}</span>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); removeAt(i); }}
-                className="text-text opacity-60 hover:opacity-100 hover:text-red-600 transition-default"
+                className="hover:opacity-80"
                 aria-label="Удалить"
               >
-                ×
+                <X className="h-3 w-3" />
               </button>
             </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ColorPicker({ colors, setColors, addColor, removeColor, setColorAt }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Цвета бренда</Label>
+        <Button variant="ghost" size="sm" onClick={addColor}>
+          <Plus className="h-4 w-4 mr-1" />Добавить
+        </Button>
+      </div>
+      {colors.length === 0 ? (
+        <p className="text-xs text-muted-foreground mt-2">Добавь цвета — модель будет использовать их в креативе</p>
+      ) : (
+        <div className="space-y-2 mt-2">
+          {colors.map((hex, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input
+                value={hex}
+                onChange={(e) => setColorAt(i, e.target.value)}
+                placeholder="#000000"
+                className="flex-1 min-w-0 font-mono text-sm"
+              />
+              <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => removeColor(i)} aria-label="Удалить">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           ))}
         </div>
       )}
@@ -117,6 +156,26 @@ export default function CreativesPage() {
   const [chatMessage, setChatMessage] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [chatLog, setChatLog] = useState([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyItems, setHistoryItems] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const resp = await fetch(`${API_URL}/creatives/history`);
+      const data = await resp.json();
+      if (resp.ok) setHistoryItems(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadHistory();
+  }, []);
 
   const handleGenerate = useCallback(async () => {
     if (!API_URL) { setError('NEXT_PUBLIC_API_URL не задан'); return; }
@@ -148,6 +207,7 @@ export default function CreativesPage() {
       setModelUsed(data.modelUsed ?? null);
       setChatMode(false);
       setChatLog([]);
+      loadHistory();
     } catch (e) {
       setError(e.message || 'Ошибка сети');
     } finally {
@@ -223,299 +283,295 @@ export default function CreativesPage() {
   const hasResult = !!generatedImage;
 
   return (
-    <div className="flex flex-1 min-h-0 overflow-hidden">
+    <div className="flex flex-1 min-h-0 overflow-hidden w-full">
       {/* Left panel */}
-      <aside className="w-[420px] min-w-[380px] flex-shrink-0 overflow-y-auto border-r border-border bg-page p-6 space-y-6">
-        <h1 className="text-2xl font-semibold text-text">Генератор креативов</h1>
+      <aside className="w-[420px] shrink-0 border-r border-border bg-card flex flex-col">
+        <ScrollArea className="flex-1 scrollbar-thin">
+          <div className="p-6 space-y-6">
+            <h2 className="text-lg font-semibold">Генератор</h2>
 
-        {/* Model selector */}
-        <div>
-          <p className="text-sm font-medium text-text mb-2">Модель</p>
-          <div className="space-y-2">
-            {MODELS.map((m) => (
-              <button
-                key={m.key}
-                type="button"
-                onClick={() => setSelectedModel(m.key)}
-                className={`
-                  w-full text-left rounded-2xl border-2 p-4 transition-default
-                  ${selectedModel === m.key ? 'border-indigo-500 bg-indigo-500/10' : 'border-border bg-section hover:border-border/80'}
-                `}
+            <div>
+              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Модель</Label>
+              <ToggleGroup
+                type="single"
+                value={selectedModel}
+                onValueChange={(v) => v && setSelectedModel(v)}
+                className="flex w-full gap-1 mt-2"
               >
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-text">{m.label}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-lg ${m.tagClass}`}>{m.tag}</span>
-                </div>
-                <p className="text-sm text-text opacity-60 mt-1">{m.desc}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Format */}
-        <div>
-          <p className="text-sm font-medium text-text mb-2">Формат</p>
-          <div className="flex flex-wrap gap-2">
-            {FORMATS.map((f) => (
-              <button
-                key={f.value}
-                type="button"
-                onClick={() => setFormat(f.value)}
-                className={`
-                  px-4 py-2 rounded-xl border-2 text-sm font-medium transition-default
-                  ${format === f.value ? 'border-indigo-500 bg-indigo-500/10 text-indigo-700' : 'border-border bg-section text-text hover:border-border/80'}
-                `}
-              >
-                {f.label} ({f.value})
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* File zones */}
-        <FileDropZone
-          title="Брендбук"
-          accept="image/*,application/pdf"
-          maxFiles={5}
-          files={brandbookFiles}
-          onFilesChange={setBrandbookFiles}
-        />
-        <FileDropZone
-          title="Референсные креативы"
-          accept="image/*"
-          maxFiles={3}
-          files={referenceFiles}
-          onFilesChange={setReferenceFiles}
-        />
-        <FileDropZone
-          title="Фото объекта / продукта"
-          accept="image/*"
-          maxFiles={5}
-          files={photoFiles}
-          onFilesChange={setPhotoFiles}
-        />
-
-        {/* Brand colors */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-sm font-medium text-text">Цвета бренда</p>
-            <button
-              type="button"
-              onClick={addColor}
-              className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
-            >
-              + Добавить
-            </button>
-          </div>
-          {colors.length === 0 ? (
-            <p className="text-sm text-text opacity-50">Добавь цвета — модель будет использовать их в креативе</p>
-          ) : (
-            <div className="space-y-2">
-              {colors.map((hex, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={hex}
-                    onChange={(e) => setColorAt(i, e.target.value)}
-                    className="w-10 h-10 rounded-lg border border-border cursor-pointer"
-                  />
-                  <span className="font-mono text-sm text-text">{hex}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeColor(i)}
-                    className="text-text opacity-60 hover:opacity-100 hover:text-red-600 ml-auto"
-                    aria-label="Удалить"
+                {MODELS.map((m) => (
+                  <ToggleGroupItem
+                    key={m.key}
+                    value={m.key}
+                    variant="outline"
+                    className="flex-1 min-w-0 flex flex-col items-center justify-center h-auto py-2 px-2 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
                   >
-                    ×
-                  </button>
-                </div>
-              ))}
+                    <span className="font-medium leading-tight text-center">{m.label}</span>
+                    <span className="text-xs opacity-70 leading-tight text-center">{m.tag}</span>
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
             </div>
-          )}
-        </div>
 
-        {/* Text fields */}
-        <div>
-          <p className="text-sm font-medium text-text mb-2">Тексты на креативе</p>
-          <div className="space-y-3">
-            <input
-              type="text"
-              placeholder="Select New Town — квартиры от €65 000"
-              value={headline}
-              onChange={(e) => setHeadline(e.target.value)}
-              className="w-full px-4 py-3 border border-border rounded-lg bg-page text-text placeholder:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+            <div>
+              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Формат</Label>
+              <ToggleGroup
+                type="single"
+                value={format}
+                onValueChange={(v) => v && setFormat(v)}
+                className="flex w-full gap-1 mt-2"
+              >
+                {FORMATS.map((f) => (
+                  <ToggleGroupItem
+                    key={f.value}
+                    value={f.value}
+                    variant="outline"
+                    className="flex-1 min-w-0 flex flex-col items-center justify-center h-auto py-2 px-2 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:border-primary"
+                  >
+                    <span className="font-medium leading-tight">{f.value}</span>
+                    <span className="text-xs opacity-70 leading-tight">{f.label}</span>
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </div>
+
+            <Separator />
+
+            <FileDropZone
+              title="Брендбук"
+              accept="image/*,application/pdf"
+              maxFiles={5}
+              files={brandbookFiles}
+              onFilesChange={setBrandbookFiles}
             />
-            <input
-              type="text"
-              placeholder="Дурлешты, Кишинёв. Сдача 2027."
-              value={subheadline}
-              onChange={(e) => setSubheadline(e.target.value)}
-              className="w-full px-4 py-3 border border-border rounded-lg bg-page text-text placeholder:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+            <FileDropZone
+              title="Референсные креативы"
+              accept="image/*"
+              maxFiles={3}
+              files={referenceFiles}
+              onFilesChange={setReferenceFiles}
             />
-            <input
-              type="text"
-              placeholder="Узнать цену"
-              value={cta}
-              onChange={(e) => setCta(e.target.value)}
-              className="w-full px-4 py-3 border border-border rounded-lg bg-page text-text placeholder:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+            <FileDropZone
+              title="Фото объекта / продукта"
+              accept="image/*"
+              maxFiles={5}
+              files={photoFiles}
+              onFilesChange={setPhotoFiles}
             />
-            <input
-              type="text"
-              placeholder="Рассрочка без %"
-              value={extraText}
-              onChange={(e) => setExtraText(e.target.value)}
-              className="w-full px-4 py-3 border border-border rounded-lg bg-page text-text placeholder:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
-            />
+
+            <Separator />
+
+            <ColorPicker colors={colors} setColors={setColors} addColor={addColor} removeColor={removeColor} setColorAt={setColorAt} />
+
+            <Separator />
+
+            <div>
+              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Тексты</Label>
+              <div className="space-y-3 mt-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Заголовок</Label>
+                  <Input value={headline} onChange={(e) => setHeadline(e.target.value)} placeholder="Select New Town — квартиры от €65 000" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Подзаголовок</Label>
+                  <Input value={subheadline} onChange={(e) => setSubheadline(e.target.value)} placeholder="Дурлешты, Кишинёв. Сдача 2027." />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">CTA</Label>
+                  <Input value={cta} onChange={(e) => setCta(e.target.value)} placeholder="Узнать цену" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Доп. текст / плашки</Label>
+                  <Input value={extraText} onChange={(e) => setExtraText(e.target.value)} placeholder="Рассрочка без %" />
+                </div>
+              </div>
+              <div className="space-y-1.5 mt-3">
+                <Label className="text-xs text-muted-foreground">Дополнительный промпт</Label>
+                <Textarea rows={3} className="resize-none" placeholder="Любые дополнительные инструкции для модели..." value={userPrompt} onChange={(e) => setUserPrompt(e.target.value)} />
+              </div>
+            </div>
+
+            <Button onClick={handleGenerate} disabled={loading} className="w-full" size="lg">
+              {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Генерирую...</> : <><Sparkles className="mr-2 h-4 w-4" />Сгенерировать</>}
+            </Button>
+
+            {error && <p className="text-xs text-destructive bg-destructive/10 rounded-lg p-3">{error}</p>}
           </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-text mb-2">Дополнительный промпт</label>
-          <textarea
-            placeholder="Любые дополнительные инструкции для модели..."
-            value={userPrompt}
-            onChange={(e) => setUserPrompt(e.target.value)}
-            rows={3}
-            className="w-full px-4 py-3 border border-border rounded-lg bg-page text-text placeholder:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 resize-y"
-          />
-        </div>
-
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={loading}
-          className="w-full py-3.5 rounded-xl font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:pointer-events-none transition-default flex items-center justify-center gap-2"
-        >
-          {loading ? (
-            <>
-              <span className="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Генерирую…
-            </>
-          ) : (
-            <>✦ Сгенерировать</>
-          )}
-        </button>
-
-        {error && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-            {error}
-          </div>
-        )}
+        </ScrollArea>
       </aside>
 
       {/* Right panel */}
-      <section className="flex-1 flex flex-col min-w-0 overflow-hidden bg-section">
+      <section className="flex-1 flex flex-col overflow-hidden bg-background">
         {!hasResult && !loading && (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4 text-text opacity-70">
-            <span className="text-6xl">🍌</span>
-            <p>Заполни параметры и нажми «Сгенерировать»</p>
+          <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center p-8">
+            <Sparkles className="w-16 h-16 text-muted-foreground/20" />
+            <p className="text-muted-foreground text-sm">Заполни параметры и нажми «Сгенерировать»</p>
           </div>
         )}
 
         {loading && !hasResult && (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4">
-            <span className="inline-block w-10 h-10 border-2 border-indigo-500/30 border-t-indigo-600 rounded-full animate-spin" />
-            <p className="text-text">Генерирую креатив...</p>
+          <div className="flex-1 flex flex-col items-center justify-center gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Генерирую креатив...</p>
           </div>
         )}
 
-        {hasResult && (
+        {hasResult && !loading && (
           <>
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-page">
-              <span className="text-xs font-mono text-text opacity-50 truncate mr-4">
-                {modelUsed || selectedModel}
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setChatMode((v) => !v)}
-                  className={`
-                    px-3 py-1.5 rounded-xl text-sm font-medium border-2 transition-default
-                    ${chatMode ? 'border-indigo-500 bg-indigo-500/10 text-indigo-700' : 'border-border hover:border-indigo-400'}
-                  `}
+            <div className="h-14 border-b border-border px-6 flex items-center justify-between bg-card shrink-0">
+              <Badge variant="outline" className="font-mono text-xs">{modelUsed || selectedModel}</Badge>
+              <div className="flex gap-2">
+                <Button
+                  variant={historyOpen ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setHistoryOpen((v) => !v)}
                 >
-                  {chatMode ? '💬 Режим чата включён' : '💬 Дорабатывать в чате'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDownload}
-                  className="px-3 py-1.5 rounded-xl text-sm font-medium border-2 border-border hover:bg-section transition-default"
-                >
-                  ↓ Скачать
-                </button>
-                <button
-                  type="button"
-                  onClick={handleGenerate}
-                  disabled={loading}
-                  className="px-3 py-1.5 rounded-xl text-sm font-medium bg-indigo-500/20 text-indigo-700 border-2 border-indigo-500/50 hover:bg-indigo-500/30 disabled:opacity-50 transition-default"
-                >
-                  ↺ Перегенерировать
-                </button>
+                  <History className="h-4 w-4 mr-2" />
+                  История
+                </Button>
+                <Button variant={chatMode ? 'default' : 'outline'} size="sm" onClick={() => setChatMode((v) => !v)}>
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  {chatMode ? 'Режим чата включён' : 'Дорабатывать в чате'}
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleDownload}>
+                  <Download className="h-4 w-4 mr-2" />Скачать
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleGenerate} disabled={loading}>
+                  <RefreshCw className="h-4 w-4 mr-2" />Перегенерировать
+                </Button>
               </div>
             </div>
 
-            <div className="flex-1 flex min-h-0">
-              <div className="flex-1 flex items-center justify-center p-6 min-w-0">
-                <img
-                  src={`data:${imageMime || 'image/png'};base64,${generatedImage}`}
-                  alt="Сгенерированный креатив"
-                  className="max-w-full max-h-full object-contain rounded-xl shadow-lg"
-                />
+            <div className="flex-1 flex overflow-hidden">
+              <div className="flex-1 flex items-center justify-center p-8">
+                <AnimatePresence mode="wait">
+                  <motion.img
+                    key={generatedImage?.slice(-20)}
+                    src={`data:${imageMime || 'image/png'};base64,${generatedImage}`}
+                    alt="Сгенерированный креатив"
+                    initial={{ opacity: 0, scale: 0.97 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.2 }}
+                    className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl"
+                  />
+                </AnimatePresence>
               </div>
 
+              {historyOpen && (
+                <div className="w-[220px] shrink-0 border-l border-border flex flex-col bg-card">
+                  <div className="p-3 border-b border-border flex items-center justify-between">
+                    <span className="text-sm font-medium">История</span>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setHistoryOpen(false)}>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  <ScrollArea className="flex-1">
+                    <div className="p-2 space-y-2">
+                      {historyLoading && (
+                        <div className="flex justify-center py-8">
+                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        </div>
+                      )}
+                      {!historyLoading && historyItems.length === 0 && (
+                        <p className="text-xs text-muted-foreground text-center py-8">
+                          Нет генераций
+                        </p>
+                      )}
+                      {historyItems.map((item) => (
+                        <div
+                          key={item.id}
+                          onClick={() => {
+                            setGeneratedImage(null);
+                            fetch(item.image_url)
+                              .then((r) => r.blob())
+                              .then((blob) => {
+                                const reader = new FileReader();
+                                reader.onload = () => {
+                                  const base64 = reader.result.split(',')[1];
+                                  setGeneratedImage(base64);
+                                  setImageMime(blob.type || 'image/png');
+                                };
+                                reader.readAsDataURL(blob);
+                              });
+                          }}
+                          className="cursor-pointer rounded-lg overflow-hidden border border-border hover:border-primary transition-colors group"
+                        >
+                          <div className="aspect-square bg-muted overflow-hidden">
+                            <img
+                              src={item.image_url}
+                              alt=""
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                              }}
+                            />
+                          </div>
+                          <div className="p-2 space-y-0.5">
+                            <div className="flex items-center gap-1">
+                              <Badge variant="outline" className="text-[10px] px-1 py-0">{item.format || '—'}</Badge>
+                              <Badge variant="outline" className="text-[10px] px-1 py-0">{item.model_key?.replace('nano-banana', 'NB') || '—'}</Badge>
+                            </div>
+                            {item.headline && (
+                              <p className="text-[11px] text-muted-foreground truncate">{item.headline}</p>
+                            )}
+                            <p className="text-[10px] text-muted-foreground opacity-60">
+                              {new Date(item.created_at).toLocaleDateString('ru', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </div>
+              )}
+
               {chatMode && (
-                <div className="w-[340px] flex-shrink-0 flex flex-col border-l border-border bg-page">
-                  <div className="p-3 border-b border-border">
-                    <h2 className="font-medium text-text">Доработка в чате</h2>
-                    <p className="text-xs text-text opacity-60 mt-0.5">
-                      Напиши что изменить — модель учтёт контекст
-                    </p>
+                <div className="w-[320px] border-l border-border flex flex-col bg-card shrink-0">
+                  <div className="p-4 border-b border-border">
+                    <p className="font-medium text-sm">Доработка</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Напиши что изменить</p>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                  <ScrollArea className="flex-1 p-4 scrollbar-thin">
                     {chatLog.length === 0 && !chatLoading && (
-                      <p className="text-sm text-text opacity-50 text-center py-8">
-                        Например: «Сделай фон темнее»
-                      </p>
+                      <p className="text-xs text-muted-foreground text-center mt-8">Например: «Сделай фон темнее»</p>
                     )}
-                    {chatLog.map((entry, i) => (
-                      <div
-                        key={i}
-                        className={`
-                          rounded-xl p-3 text-sm
-                          ${entry.role === 'user' ? 'ml-4 bg-indigo-600 text-white text-right' : ''}
-                          ${entry.role === 'model' ? 'mr-4 bg-section border border-border text-left' : ''}
-                          ${entry.role === 'error' ? 'mr-4 bg-red-50 border border-red-200 text-red-800 text-left' : ''}
-                        `}
-                      >
-                        {entry.text && <p className="whitespace-pre-wrap">{entry.text}</p>}
-                        {entry.image && <p className="text-text opacity-60 mt-1">[изображение обновлено]</p>}
-                      </div>
-                    ))}
+                    <AnimatePresence>
+                      {chatLog.map((entry, i) => (
+                        <motion.div
+                          key={i}
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.15 }}
+                          className={
+                            entry.role === 'user'
+                              ? 'bg-primary text-primary-foreground rounded-2xl rounded-br-sm ml-8 p-3 text-xs mb-2'
+                              : entry.role === 'model'
+                                ? 'bg-accent rounded-2xl rounded-bl-sm mr-8 p-3 text-xs mb-2'
+                                : 'border border-destructive text-destructive text-xs p-3 rounded-lg mb-2'
+                          }
+                        >
+                          {entry.text && <p className="whitespace-pre-wrap">{entry.text}</p>}
+                          {entry.image && <p className="opacity-70 mt-1">[изображение обновлено]</p>}
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
                     {chatLoading && (
-                      <div className="flex items-center gap-2 text-text opacity-60 text-sm">
-                        <span className="inline-block w-4 h-4 border-2 border-indigo-500/30 border-t-indigo-600 rounded-full animate-spin" />
-                        Обрабатываю...
-                      </div>
+                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />Обрабатываю...
+                      </motion.div>
                     )}
-                  </div>
+                  </ScrollArea>
                   <div className="p-3 border-t border-border flex gap-2">
-                    <input
-                      type="text"
+                    <Input
                       value={chatMessage}
                       onChange={(e) => setChatMessage(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleChat()}
-                      placeholder="Сообщение..."
+                      placeholder="Что изменить?"
                       disabled={chatLoading}
-                      className="flex-1 px-4 py-2.5 border border-border rounded-lg bg-page text-text placeholder:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-60"
+                      className="flex-1"
                     />
-                    <button
-                      type="button"
-                      onClick={handleChat}
-                      disabled={chatLoading || !chatMessage.trim()}
-                      className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-50 transition-default"
-                    >
-                      →
-                    </button>
+                    <Button size="icon" onClick={handleChat} disabled={chatLoading || !chatMessage.trim()}>
+                      <SendHorizontal className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               )}

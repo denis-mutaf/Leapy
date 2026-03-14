@@ -1,8 +1,7 @@
 import { Inter_Tight } from 'next/font/google';
-import Image from 'next/image';
-import Link from 'next/link';
 import './globals.css';
-import NavLink from '@/components/NavLink';
+import { ThemeProvider } from '@/components/theme-provider';
+import { Sidebar } from '@/components/sidebar';
 
 const interTight = Inter_Tight({
   weight: ['400', '500'],
@@ -12,54 +11,24 @@ const interTight = Inter_Tight({
 });
 
 export const metadata = {
-  title: 'LeadLeap',
-  description: 'Управление RAG базой знаний',
+  title: 'Leapy',
+  description: 'AI-сервис для анализа звонков и генерации креативов',
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="ru" className={interTight.variable}>
+    <html lang="ru" className={`${interTight.variable} antialiased`} suppressHydrationWarning>
       <body className="font-sans">
-        {/* Декоративный градиентный блюр */}
-        <div
-          className="fixed top-0 right-0 w-[400px] h-[400px] -z-[1] pointer-events-none opacity-[0.15]"
-          style={{
-            background: 'radial-gradient(circle, rgba(224,64,160,0.4) 0%, rgba(139,92,246,0.3) 40%, rgba(99,102,241,0.2) 70%, transparent 100%)',
-            filter: 'blur(100px)',
-          }}
-          aria-hidden
-        />
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
+          <div className="h-screen flex overflow-hidden bg-background">
+            <Sidebar />
 
-        <div className="min-h-screen flex flex-col">
-          <header className="sticky top-0 z-10 bg-page px-4 md:px-8 py-4">
-            <div className="max-w-5xl mx-auto flex flex-col items-center justify-center gap-3">
-              <Link href="/" className="block">
-                <Image
-                  src="/leadleap_logo.svg"
-                  alt="LeadLeap"
-                  width={140}
-                  height={40}
-                  className="h-auto w-[140px] object-contain"
-                  priority
-                />
-              </Link>
-              <nav className="flex items-center justify-center gap-1">
-                <NavLink href="/" label="База знаний" />
-                <NavLink href="/creatives" label="Креативы" />
-              </nav>
-            </div>
-          </header>
-
-          <main className="w-full flex-1">
-            {children}
-          </main>
-
-          <footer className="border-t border-border py-6">
-            <p className="text-center text-sm text-text opacity-40">
-              LeadLeap © 2025
-            </p>
-          </footer>
-        </div>
+            {/* Main content */}
+            <main className="flex-1 min-h-0 flex flex-col">
+              {children}
+            </main>
+          </div>
+        </ThemeProvider>
       </body>
     </html>
   );

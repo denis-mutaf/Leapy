@@ -16,6 +16,7 @@
 4. Сохраняет всё в Supabase (звонки, оценки, профили клиентов)
 5. Публикует заметки и задачи в AmoCRM
 6. RAG-система: база знаний из документов с семантическим поиском (pgvector)
+7. **Генератор креативов:** генерация рекламных баннеров через Google Gemini (Nano Banana), загрузка в Supabase Storage, доработка в чате
 
 ---
 
@@ -43,18 +44,20 @@
 ### Бэкенд (`/`)
 - **Runtime:** Node.js 20, ES Modules (`"type": "module"`)
 - **Framework:** Express 4
-- **AI:** OpenAI (Whisper + GPT-4o-mini + text-embedding-3-small), Anthropic Claude (анализ звонков)
+- **AI:** OpenAI (Whisper + GPT-4o-mini + text-embedding-3-small), Anthropic Claude (анализ звонков), **Google Gemini** (генерация креативов: `@google/genai`)
 - **Database:** Supabase (PostgreSQL + pgvector)
-- **Storage:** Supabase Storage
+- **Storage:** Supabase Storage (call-recordings, rag-documents, **creative-images**)
 - **CRM:** AmoCRM API v4
 - **Парсинг документов:** pdf-parse, mammoth (DOCX), встроенный (TXT/MD/HTML)
+- **Загрузка файлов:** multer (memoryStorage) для multipart
 - **Деплой:** Railway, ветка `main`
 
 ### Фронтенд (`leapy-admin`)
 - **Framework:** Next.js 15 (App Router), JavaScript (не TypeScript)
-- **Стили:** Tailwind CSS 3 + CSS custom properties (градиенты бренда)
+- **UI:** shadcn/ui (Zinc, CSS variables), next-themes (dark/light), framer-motion, lucide-react
+- **Стили:** Tailwind CSS 3 + CSS custom properties (градиенты бренда, тёмная тема по умолчанию)
 - **Шрифт:** Inter Tight (Google Fonts, через `next/font/google`)
-- **Конфиги:** `postcss.config.cjs`, `tailwind.config.cjs` (`.cjs` из-за конфликта с корневым `"type": "module"`)
+- **Конфиги:** `postcss.config.cjs`, `tailwind.config.cjs`, `components.json` (shadcn)
 - **Деплой:** Vercel, ветка `main` репо `denis-mutaf/leapy-admin`
 
 ---
@@ -66,6 +69,7 @@
 PBX_CRM_TOKEN=         # токен для валидации вебхука от АТС
 OPENAI_API_KEY=        # для Whisper, GPT-4o-mini, embeddings
 ANTHROPIC_API_KEY=     # для Claude — анализ звонков
+GEMINI_API_KEY=        # для генерации креативов (Nano Banana)
 AMO_LONG_TOKEN=        # долгосрочный токен AmoCRM
 AMO_SUBDOMAIN=deniskosharny
 SUPABASE_URL=https://oznbosvtlrdwbnmonoie.supabase.co
@@ -83,14 +87,15 @@ NEXT_PUBLIC_API_URL=https://leapy-production.up.railway.app
 ## Структура бэкенда
 
 ```
-index.js                  — точка входа, CORS middleware, маршруты
+index.js                  — точка входа, CORS, маршруты: /webhook, /rag/*, /creatives/*
 src/
 ├── webhook.js            — обработчик POST /webhook от АТС
 ├── analyze.js            — анализ звонка через Claude (JSON-ответ)
-├── amocrm.js             — AmoCRM API: поиск, создание контактов/сделок, заметки, задачи
+├── amocrm.js             — AmoCRM API: поиск, контакты/сделки, заметки, задачи
 ├── supabase.js           — все запросы к БД (клиенты, звонки, оценки, инсайты, аудио)
 ├── rag.js                — RAG-движок: парсинг, чанкинг, embeddings, поиск
-└── rag-routes.js         — Express роуты для /rag/*
+├── rag-routes.js         — Express роуты для /rag/*
+└── creatives.js          — роутер /creatives: генерация креативов (Gemini), чат, Storage, creative_generations
 ```
 
 ---
@@ -114,6 +119,14 @@ src/
 | POST | `/rag/generate-title` | Генерация названия документа через Claude (multipart: `file`) → `{ title }` |
 | POST | `/rag/ask` | RAG Q&A: поиск по базе + ответ Claude (`question`, `limit`, `threshold`) → `{ answer, sources }` |
 
+### Creatives (Gemini)
+| Метод | Путь | Описание |
+|-------|------|----------|
+| POST | `/creatives/generate` | Генерация креатива: multipart (brandbook[], references[], photos[], model, format, headline, subheadline, cta, extraText, userPrompt, colors). Ответ: `{ id, image (base64), mimeType, textResponse, history, imageUrl, modelUsed }`. Загрузка в Storage `creative-images`, запись в `creative_generations`. |
+| POST | `/creatives/chat` | Доработка в чате: JSON `{ model, history, message }`. Ответ: `{ image?, mimeType?, textResponse, history, imageUrl? }`. |
+
+Модели (model key → Gemini): `nano-banana` → gemini-2.5-flash-image, `nano-banana-2` → gemini-3.1-flash-image-preview, `nano-banana-pro` → gemini-3-pro-image-preview.
+
 ---
 
 ## База данных Supabase
@@ -130,6 +143,7 @@ src/
 | `call_insights` | Извлечённые данные из звонка (имя, тип недвижимости, бюджет и т.д.) |
 | `documents` | Метаданные RAG-документов |
 | `document_chunks` | Чанки с embeddings vector(1536) для семантического поиска |
+| `creative_generations` | Записи сгенерированных креативов (model_key, model_id, format, headline, subheadline, cta, extra_text, user_prompt, colors, storage_path, image_url) |
 
 ### SQL-функции
 - `increment_client_calls(client_id uuid)` — атомарный инкремент счётчика звонков
@@ -138,6 +152,7 @@ src/
 ### Storage buckets
 - `call-recordings` — приватный, MP3 записи звонков
 - `rag-documents` — приватный, оригинальные загруженные файлы
+- `creative-images` — публичный доступ к объектам, пути `creatives/<year>/<uuid>.png`
 
 ### Данные
 - Менеджер `Crina` (pbx_user: `u040`, id: `9c7c297f-29ba-4e6c-80fc-c39aeaff6a0c`)
@@ -215,51 +230,53 @@ POST /webhook
 
 ## Admin-панель (leapy-admin)
 
-Расположена в папке `admin/` основного репо и в отдельном репо `denis-mutaf/leapy-admin`.
+Расположена в папке `admin/` основного репо и в отдельном репо `denis-mutaf/leapy-admin`. **Метаданные:** title «Leapy», description «AI-сервис для анализа звонков и генерации креативов».
 
-### Дизайн (фирменный стиль LeadLeap)
+### Дизайн
 
-| Элемент | Значение |
-|---------|----------|
-| Шрифт | Inter Tight (400/500), `--font-inter-tight` |
-| Основной текст | `#242424` |
-| Фон страницы | `#FFFFFF` |
-| Фон секций/карточек | `#F8F8F8` |
-| Границы | `#E5E5E5` |
-| Основной градиент | `linear-gradient(135deg, #E040A0, #C850C0, #8B5CF6, #6366F1)` |
-| Мягкий градиент (hover) | `linear-gradient(135deg, rgba(224,64,160,0.08), rgba(139,92,246,0.08))` |
-| Радиус карточек | 16px |
-| Радиус кнопок | 12px |
-| Радиус инпутов | 8px |
+- **UI:** shadcn/ui (default style, base color Zinc), CSS variables для темы
+- **Тема:** next-themes, по умолчанию dark (`defaultTheme="dark"`, `enableSystem={false}`)
+- **Шрифт:** Inter Tight (400/500), `--font-inter-tight`
+- **Утилиты:** `.scrollbar-thin` в globals.css для тонкого скроллбара; градиенты бренда (`.btn-gradient`, `.bg-gradient-leadleap`) сохранены
+- **Tailwind:** `theme.extend.colors` — shadcn (background, foreground, card, primary, muted, accent, destructive, border, input, ring и др.) + legacy (page, text, section, status)
 
-### Структура компонентов
+### Структура
 
 ```
 admin/
 ├── app/
-│   ├── layout.js          — Inter Tight, шапка (лого по центру), декор. блюр, футер
-│   ├── page.js            — сборка всех секций
-│   └── globals.css        — CSS-переменные градиентов, утилиты .btn-gradient, .bg-gradient-leadleap
+│   ├── layout.js            — сайдбар (лого, SidebarNav, ThemeToggle), ThemeProvider, main
+│   ├── page.js              — страница «База знаний»: все секции в одном файле (Card, Button, Input, Textarea, Label, Badge), логика загрузки/документов/ask/search inlined
+│   ├── globals.css           — shadcn imports, :root/.light/.dark, утилиты, scrollbar-thin
+│   └── creatives/
+│       ├── layout.js        — полноширинный контейнер для двухпанельного layout
+│       └── page.js          — генератор креативов: левая панель (модель, формат, FileDropZone x3, ColorPicker, тексты, кнопка), правая (пусто/загрузка/результат + чат)
 ├── components/
-│   ├── UploadForm.jsx     — drag-and-drop зона, автогенерация названия через Claude
-│   ├── DocumentList.jsx   — таблица документов, статусные бейджи, удаление
-│   ├── AskAI.jsx          — раздел «Спросить AI» (RAG Q&A с источниками)
-│   └── SearchTest.jsx     — тест семантического поиска (сырые чанки)
+│   ├── ui/                   — shadcn: button, card, input, textarea, label, badge, scroll-area, separator, tooltip
+│   ├── theme-provider.jsx    — next-themes ThemeProvider
+│   ├── theme-toggle.jsx      — переключатель светлая/тёмная тема
+│   ├── nav-link.jsx         — ссылка навигации с иконкой, active по usePathname
+│   ├── sidebar-nav.jsx      — клиентский блок навигации (NavLink x2: База знаний, Креативы), иконки lucide
+│   ├── NavLink.jsx          — (legacy, для обратной совместимости)
+│   ├── UploadForm.jsx        — (legacy, логика перенесена в page.js)
+│   ├── DocumentList.jsx     — (legacy)
+│   ├── AskAI.jsx            — (legacy)
+│   └── SearchTest.jsx       — (legacy)
 ├── lib/
-│   └── api.js             — функции: uploadDocument, getDocuments, deleteDocument,
-│                            searchDocuments, generateTitle, askQuestion
+│   ├── api.js                — uploadDocument, getDocuments, deleteDocument, searchDocuments, generateTitle, askQuestion
+│   └── utils.js              — cn() для shadcn
 ├── public/
-│   └── leadleap_logo.svg  — SVG логотип (замени на финальный файл)
-├── tailwind.config.cjs    — расширен: цвета бренда, радиусы, шрифт
-└── .env.local             — NEXT_PUBLIC_API_URL=https://leapy-production.up.railway.app
+│   └── leadleap_logo.svg
+├── tailwind.config.cjs       — shadcn colors (hsl(var(--*))), borderRadius lg/md/sm, fontFamily, legacy colors
+├── components.json           — shadcn (style default, baseColor zinc, cssVariables)
+└── .env.local                — NEXT_PUBLIC_API_URL
 ```
 
-### Секции страницы (сверху вниз)
+### Навигация и страницы
 
-1. **Загрузка документа** — drag-and-drop зона с пунктирной градиентной рамкой; при выборе файла автоматически запускается генерация названия через `/rag/generate-title` (спиннер в поле)
-2. **Документы** — таблица на карточке; бейджи статусов (Готов / Обработка / Ошибка); hover строк с мягким градиентом; подтверждение удаления
-3. **Спросить AI** — поле вопроса + кнопка «Спросить»; ответ Claude на карточке с градиентным фоном; список источников с процентом совпадения
-4. **Тест поиска** — семантический поиск, возвращает сырые чанки с бейджами схожести
+- **Сайдбар:** лого (Link на /), «Навигация» — «База знаний» (/, BookOpen), «Креативы» (/creatives, Sparkles); внизу копирайт LeadLeap © 2026 и ThemeToggle.
+- **Главная (/):** «База знаний» — заголовок, затем карточки: загрузка документа (drag-and-drop, название, кнопка Загрузить), таблица документов (обновить, удалить), «Спросить AI» (textarea + ответ + источники), «Тест поиска» (input + результаты). Вся логика и запросы к `@/lib/api` в `app/page.js`.
+- **Креативы (/creatives):** левая панель — выбор модели (Nano Banana / 2 / Pro), формат (1:1, 9:16, 16:9, 4:5, 1:4), три зоны файлов (брендбук, референсы, фото), цвета бренда, тексты, доп. промпт, кнопка «Сгенерировать». Правая панель — пустое состояние / загрузка / результат (картинка, тулбар: модель, «Дорабатывать в чате», Скачать, Перегенерировать; при включённом чате — панель чата с историей и вводом). API: `POST /creatives/generate` (FormData), `POST /creatives/chat` (JSON).
 
 ---
 
