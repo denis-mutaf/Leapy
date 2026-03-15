@@ -275,6 +275,29 @@ async function insertCreativeGeneration(record) {
   return Array.isArray(data) ? data[0] : data;
 }
 
+/**
+ * Trim chat history to limit size: keep last N turns and strip old image data.
+ * Prevents huge base64 blobs from being sent back to the client.
+ */
+function trimHistory(history, maxTurns = 4) {
+  const trimmed = history.slice(-maxTurns * 2);
+
+  return trimmed.map((turn, index) => {
+    const isLastModelTurn = index === trimmed.length - 1 && turn.role === 'model';
+    if (isLastModelTurn) return turn;
+
+    return {
+      ...turn,
+      parts: turn.parts?.map(part => {
+        if (part.inlineData) {
+          return { text: '[previous image]' };
+        }
+        return part;
+      }) ?? turn.parts,
+    };
+  });
+}
+
 // ── POST /creatives/generate ───────────────────────────────────────────────────
 
 router.post('/generate', (req, res, next) => {
@@ -335,8 +358,12 @@ router.post('/generate', (req, res, next) => {
     const inserted = await insertCreativeGeneration(row);
     const id = inserted?.id ?? null;
 
+    const userPartsLean = parts.map(part =>
+      part.inlineData ? { text: '[reference image]' } : part
+    );
+
     const history = [
-      { role: 'user', parts },
+      { role: 'user', parts: userPartsLean },
       {
         role: 'model',
         parts: [
@@ -368,7 +395,7 @@ router.post('/chat', async (req, res) => {
     return res.status(503).json({ error: 'Gemini API not configured (GEMINI_API_KEY missing)' });
   }
 
-  const { model: modelKey, history, message } = req.body || {};
+  const { model: modelKey, history, message, contextImageUrl } = req.body || {};
 
   if (!Array.isArray(history) || history.length === 0) {
     return res.status(400).json({ error: 'history must be a non-empty array' });
@@ -377,9 +404,25 @@ router.post('/chat', async (req, res) => {
     return res.status(400).json({ error: 'message must be a non-empty string' });
   }
 
+  let resolvedHistory = history;
+  if (contextImageUrl && Array.isArray(history) && history.length === 1) {
+    try {
+      const imgResp = await fetch(contextImageUrl);
+      const imgBuffer = await imgResp.arrayBuffer();
+      const imgBase64 = Buffer.from(imgBuffer).toString('base64');
+      const mimeType = imgResp.headers.get('content-type') || 'image/png';
+      resolvedHistory = [
+        { role: 'user', parts: [{ text: 'Here is the creative to refine.' }] },
+        { role: 'model', parts: [{ inlineData: { mimeType, data: imgBase64 } }] },
+      ];
+    } catch (e) {
+      console.warn('[CREATIVES] Failed to fetch context image:', e.message);
+    }
+  }
+
   const modelId = getModelId((modelKey || DEFAULT_MODEL_KEY).trim() || DEFAULT_MODEL_KEY);
   const contents = [
-    ...history,
+    ...resolvedHistory,
     { role: 'user', parts: [{ text: message.trim() }] },
   ];
 
@@ -411,12 +454,130 @@ router.post('/chat', async (req, res) => {
       image: imageData ?? undefined,
       mimeType: mimeType ?? undefined,
       textResponse,
-      history: updatedHistory,
+      history: trimHistory(updatedHistory),
       imageUrl: imageUrl ?? undefined,
     });
   } catch (err) {
     console.error('[CREATIVES] chat error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /creatives/parse-product ──────────────────────────────────────────────
+
+router.post('/parse-product', async (req, res) => {
+  const { url } = req.body || {};
+  if (!url?.trim()) return res.status(400).json({ error: 'URL is required' });
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; LeapyBot/1.0)',
+        Accept: 'text/html,application/xhtml+xml',
+        'Accept-Language': 'ru,ro,en',
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) {
+      return res.status(422).json({
+        error: `Не удалось загрузить страницу (${response.status}). Сайт может блокировать парсинг.`,
+      });
+    }
+
+    const html = await response.text();
+
+    const ogImage = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/)?.[1]
+      || html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:image"/)?.[1]
+      || null;
+
+    const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: `Extract product information from this HTML page and return ONLY a JSON object, no markdown, no backticks.
+
+Required fields:
+{
+  "name": "product name",
+  "price": "price with currency",
+  "original_price": "original price if discounted, otherwise null",
+  "discount": "discount percentage or amount if visible, otherwise null",
+  "description": "short product description, max 100 chars",
+  "headline": "catchy ad headline based on product name, max 60 chars",
+  "subheadline": "benefit-focused subheadline, max 80 chars",
+  "cta": "call to action text (Купить сейчас / Cumpără acum etc)",
+  "extra_text": "discount badge text or promo label if any (e.g. -20%, Livrare gratuită)",
+  "image_url": "${ogImage || 'null'}",
+  "language": "ru or ro or en based on page language"
+}
+
+HTML (first 8000 chars):
+${html.substring(0, 8000)}`,
+        }],
+      }),
+    });
+
+    if (!claudeResp.ok) {
+      throw new Error('Claude API error');
+    }
+
+    const claudeData = await claudeResp.json();
+    const raw = claudeData.content?.[0]?.text || '';
+    const cleaned = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+
+    res.json(parsed);
+  } catch (err) {
+    if (err.name === 'TimeoutError') {
+      return res.status(422).json({ error: 'Сайт не отвечает (таймаут 10 сек). Попробуй позже.' });
+    }
+    if (err.message?.includes('JSON')) {
+      return res.status(422).json({ error: 'Не удалось извлечь данные со страницы. Попробуй другой сайт.' });
+    }
+    console.error('[CREATIVES] parse-product error:', err.message);
+    res.status(500).json({ error: 'Ошибка парсинга: ' + err.message });
+  }
+});
+
+// ── POST /creatives/fetch-image ─────────────────────────────────────────────────
+
+router.post('/fetch-image', async (req, res) => {
+  const { url } = req.body || {};
+  if (!url?.trim()) return res.status(400).json({ error: 'URL is required' });
+
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(10000),
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+
+    if (!response.ok) {
+      return res.status(422).json({ error: `Не удалось загрузить изображение (${response.status})` });
+    }
+
+    const contentType = response.headers.get('content-type') || 'image/png';
+    if (!contentType.startsWith('image/')) {
+      return res.status(422).json({ error: 'Ссылка не является изображением' });
+    }
+
+    const buffer = await response.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString('base64');
+
+    res.json({ base64, mimeType: contentType, url });
+  } catch (err) {
+    if (err.name === 'TimeoutError') {
+      return res.status(422).json({ error: 'Изображение не загрузилось (таймаут)' });
+    }
+    res.status(500).json({ error: 'Ошибка загрузки: ' + err.message });
   }
 });
 

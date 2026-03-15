@@ -489,6 +489,12 @@ export default function CreativesPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [previewItem, setPreviewItem] = useState(null);
   const [activeChatItem, setActiveChatItem] = useState(null);
+  const [productUrl, setProductUrl] = useState('');
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [imageUrlLoading, setImageUrlLoading] = useState(false);
+  const [imageUrlError, setImageUrlError] = useState('');
 
   useEffect(() => {
     const saved = loadForm();
@@ -514,6 +520,8 @@ export default function CreativesPage() {
       if (saved.logoFiles?.length) setLogoFiles(base64ToFiles(saved.logoFiles));
       if (saved.compositionFiles?.length) setCompositionFiles(base64ToFiles(saved.compositionFiles));
       if (saved.referenceFiles?.length) setReferenceFiles(base64ToFiles(saved.referenceFiles));
+      if (saved.productUrl != null) setProductUrl(saved.productUrl);
+      if (saved.imageUrl != null) setImageUrl(saved.imageUrl);
     }
   }, []);
 
@@ -538,6 +546,8 @@ export default function CreativesPage() {
         cta,
         extraText,
         userPrompt,
+        productUrl,
+        imageUrl,
       },
       { logoFiles, compositionFiles, referenceFiles }
     );
@@ -560,10 +570,72 @@ export default function CreativesPage() {
     cta,
     extraText,
     userPrompt,
+    productUrl,
+    imageUrl,
     logoFiles,
     compositionFiles,
     referenceFiles,
   ]);
+
+  const handleFetchImageUrl = useCallback(async (url) => {
+    const targetUrl = url || imageUrl;
+    if (!targetUrl?.trim() || !API_URL) return;
+    setImageUrlLoading(true);
+    setImageUrlError('');
+    try {
+      const res = await fetch(`${API_URL}/creatives/fetch-image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: targetUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setImageUrlError(data.error || 'Не удалось загрузить изображение');
+        return;
+      }
+      const byteString = atob(data.base64);
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+      const file = new File([ab], 'product-image.png', { type: data.mimeType });
+      setCompositionFiles((prev) => [file, ...prev].slice(0, 3));
+    } catch (e) {
+      setImageUrlError('Ошибка сети');
+    } finally {
+      setImageUrlLoading(false);
+    }
+  }, [imageUrl, API_URL]);
+
+  const handleParseProduct = useCallback(async () => {
+    if (!productUrl.trim() || !API_URL) return;
+    setParsing(true);
+    setParseError('');
+    try {
+      const res = await fetch(`${API_URL}/creatives/parse-product`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: productUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setParseError(data.error || 'Ошибка парсинга');
+        return;
+      }
+      if (data.headline) setHeadline(data.headline);
+      if (data.subheadline) setSubheadline(data.subheadline);
+      if (data.cta) setCta(data.cta);
+      if (data.extra_text) setExtraText(data.extra_text);
+      if (data.language) setLanguage(data.language);
+      if (data.image_url && data.image_url !== 'null') {
+        setImageUrl(data.image_url);
+        handleFetchImageUrl(data.image_url);
+      }
+    } catch (e) {
+      setParseError('Ошибка сети. Проверь подключение.');
+    } finally {
+      setParsing(false);
+    }
+  }, [productUrl, API_URL, handleFetchImageUrl]);
 
   const loadHistory = async () => {
     setHistoryLoading(true);
@@ -671,7 +743,12 @@ export default function CreativesPage() {
       const res = await fetch(`${API_URL}/creatives/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: selectedModel, history, message: msg }),
+        body: JSON.stringify({
+          model: selectedModel,
+          history,
+          message: msg,
+          contextImageUrl: activeChatItem?.image_url || null,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -697,7 +774,7 @@ export default function CreativesPage() {
     } finally {
       setChatLoading(false);
     }
-  }, [API_URL, chatMessage, chatLoading, selectedModel, history]);
+  }, [API_URL, chatMessage, chatLoading, selectedModel, history, activeChatItem?.image_url]);
 
   const handleDownload = useCallback(() => {
     if (!generatedImage) return;
@@ -741,6 +818,39 @@ export default function CreativesPage() {
       </div>
       <ScrollArea className="flex-1">
         <div className="px-6 py-5 space-y-5">
+
+          {/* URL Parser */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Автозаполнение по ссылке товара
+            </label>
+            <div className="flex gap-2 mt-2">
+              <Input
+                value={productUrl}
+                onChange={(e) => setProductUrl(e.target.value)}
+                placeholder="https://topmag.md/product/..."
+                className="flex-1 text-sm"
+                disabled={parsing}
+              />
+              <Button
+                type="button"
+                size="sm"
+                disabled={parsing || !productUrl.trim()}
+                onClick={handleParseProduct}
+                className="shrink-0"
+              >
+                {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              </Button>
+            </div>
+            {parseError && (
+              <div className="mt-2 flex items-start gap-2 text-xs text-destructive bg-destructive/10 rounded-lg p-3">
+                <span className="flex-1">{parseError}</span>
+                <button type="button" onClick={() => setParseError('')} className="shrink-0">
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Model */}
           <div>
@@ -931,6 +1041,30 @@ export default function CreativesPage() {
             <div className="flex flex-col gap-2">
               <FileAttachButton label="Лого" files={logoFiles} onFilesChange={setLogoFiles} maxFiles={1} />
               <FileAttachButton label="Пример композиции" files={compositionFiles} onFilesChange={setCompositionFiles} maxFiles={3} />
+              <div className="flex gap-2 items-center">
+                <Input
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  placeholder="https://site.com/image.webp"
+                  className="flex-1 text-sm"
+                  disabled={imageUrlLoading}
+                />
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  className="shrink-0 h-9 w-9"
+                  disabled={imageUrlLoading || !imageUrl.trim()}
+                  onClick={() => handleFetchImageUrl(imageUrl)}
+                >
+                  {imageUrlLoading
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Download className="h-3.5 w-3.5" />}
+                </Button>
+              </div>
+              {imageUrlError && (
+                <p className="text-xs text-destructive">{imageUrlError}</p>
+              )}
               <FileAttachButton label="Референсы" files={referenceFiles} onFilesChange={setReferenceFiles} maxFiles={5} />
             </div>
           </div>
@@ -1161,7 +1295,17 @@ export default function CreativesPage() {
                 <Button className="w-full" size="sm" onClick={() => handleDownloadUrl(previewItem.image_url, previewItem.id)}>
                   <Download className="h-4 w-4 mr-2" />Скачать
                 </Button>
-                <Button variant="outline" className="w-full" size="sm" onClick={() => { setActiveChatItem(previewItem); setChatMode(true); setPreviewItem(null); }}>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  size="sm"
+                  onClick={() => {
+                    setActiveChatItem(previewItem);
+                    setChatMode(true);
+                    setPreviewItem(null);
+                    setHistory([{ role: 'user', parts: [{ text: `__imageUrl__:${previewItem.image_url}` }] }]);
+                  }}
+                >
                   <MessageSquare className="h-4 w-4 mr-2" />Доработать
                 </Button>
               </div>
