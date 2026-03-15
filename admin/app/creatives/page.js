@@ -266,6 +266,65 @@ function DropdownButton({ label, value, options, onChange }) {
   );
 }
 
+function isValidHex(val) {
+  return typeof val === 'string' && /^#[0-9A-Fa-f]{3,6}$/.test(val);
+}
+
+function ColorRow({ value, onChange, label }) {
+  const colorInputRef = useRef(null);
+  const valid = isValidHex(value);
+  const handlePickerChange = (e) => {
+    const hex = e.target.value;
+    if (hex) onChange(hex);
+  };
+  return (
+    <div className="flex items-center gap-2">
+      {valid ? (
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-9 w-9 rounded-lg border border-border cursor-pointer bg-transparent p-0.5 shrink-0"
+        />
+      ) : (
+        <>
+          <input
+            ref={colorInputRef}
+            type="color"
+            value="#ffffff"
+            onChange={handlePickerChange}
+            className="sr-only"
+            tabIndex={-1}
+          />
+          <button
+            type="button"
+            onClick={() => colorInputRef.current?.click()}
+            className="h-9 w-9 rounded-lg border border-dashed border-border bg-muted/50 shrink-0 cursor-pointer hover:bg-muted transition-colors"
+            aria-label={label}
+          />
+        </>
+      )}
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="#ffffff"
+        className="flex-1 font-mono text-sm min-w-0"
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          className="shrink-0 p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
+          aria-label="Очистить"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+      <span className="text-xs text-muted-foreground w-20 shrink-0">{label}</span>
+    </div>
+  );
+}
+
 function JustifiedGallery({ items, onItemClick, onDownload }) {
   const containerRef = useRef(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -403,7 +462,10 @@ export default function CreativesPage() {
   const [language, setLanguage] = useState('ru');
   const [style, setStyle] = useState('minimal');
   const [targetAudience, setTargetAudience] = useState('');
-  const [brandColors, setBrandColors] = useState('');
+  const [colorBackground, setColorBackground] = useState('');
+  const [colorAccent, setColorAccent] = useState('');
+  const [colorText, setColorText] = useState('');
+  const [colorSecondary, setColorSecondary] = useState('');
   const [fonts, setFonts] = useState('');
   const [logoFiles, setLogoFiles] = useState([]);
   const [compositionFiles, setCompositionFiles] = useState([]);
@@ -415,7 +477,7 @@ export default function CreativesPage() {
   const [userPrompt, setUserPrompt] = useState('');
   const [generatedImage, setGeneratedImage] = useState(null);
   const [imageMime, setImageMime] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [activeGenerations, setActiveGenerations] = useState([]);
   const [error, setError] = useState('');
   const [modelUsed, setModelUsed] = useState(null);
   const [chatMode, setChatMode] = useState(false);
@@ -439,7 +501,10 @@ export default function CreativesPage() {
       if (saved.language != null) setLanguage(saved.language);
       if (saved.style != null) setStyle(saved.style);
       if (saved.targetAudience != null) setTargetAudience(saved.targetAudience);
-      if (saved.brandColors != null) setBrandColors(saved.brandColors);
+      if (saved.colorBackground != null) setColorBackground(saved.colorBackground);
+      if (saved.colorAccent != null) setColorAccent(saved.colorAccent);
+      if (saved.colorText != null) setColorText(saved.colorText);
+      if (saved.colorSecondary != null) setColorSecondary(saved.colorSecondary);
       if (saved.fonts != null) setFonts(saved.fonts);
       if (saved.headline != null) setHeadline(saved.headline);
       if (saved.subheadline != null) setSubheadline(saved.subheadline);
@@ -463,7 +528,10 @@ export default function CreativesPage() {
         language,
         style,
         targetAudience,
-        brandColors,
+        colorBackground,
+        colorAccent,
+        colorText,
+        colorSecondary,
         fonts,
         headline,
         subheadline,
@@ -482,7 +550,10 @@ export default function CreativesPage() {
     language,
     style,
     targetAudience,
-    brandColors,
+    colorBackground,
+    colorAccent,
+    colorText,
+    colorSecondary,
     fonts,
     headline,
     subheadline,
@@ -516,34 +587,41 @@ export default function CreativesPage() {
       return;
     }
     setError('');
-    setLoading(true);
-    try {
-      const form = new FormData();
-      form.append('model', selectedModel);
-      form.append('format', format);
-      form.append('imageSize', imageSize);
-      form.append('headline', headline);
-      form.append('subheadline', subheadline);
-      form.append('cta', cta);
-      form.append('extraText', extraText);
-      form.append('userPrompt', userPrompt);
-      form.append('goals', JSON.stringify(goals));
-      form.append('industry', industry);
-      form.append('language', language);
-      form.append('style', style);
-      form.append('targetAudience', targetAudience);
-      form.append('brandColors', brandColors);
-      form.append('fonts', fonts);
-      logoFiles.forEach((f) => form.append('brandbook', f));
-      compositionFiles.forEach((f) => form.append('photos', f));
-      referenceFiles.forEach((f) => form.append('references', f));
+    const genId = crypto.randomUUID();
+    setActiveGenerations((prev) => [...prev, { id: genId, status: 'loading', format }]);
 
+    const form = new FormData();
+    form.append('model', selectedModel);
+    form.append('format', format);
+    form.append('imageSize', imageSize);
+    form.append('headline', headline);
+    form.append('subheadline', subheadline);
+    form.append('cta', cta);
+    form.append('extraText', extraText);
+    form.append('userPrompt', userPrompt);
+    form.append('goals', JSON.stringify(goals));
+    form.append('industry', industry);
+    form.append('language', language);
+    form.append('style', style);
+      form.append('targetAudience', targetAudience);
+      form.append('colorBackground', colorBackground);
+      form.append('colorAccent', colorAccent);
+      form.append('colorText', colorText);
+      form.append('colorSecondary', colorSecondary);
+      form.append('fonts', fonts);
+    logoFiles.forEach((f) => form.append('brandbook', f));
+    compositionFiles.forEach((f) => form.append('photos', f));
+    referenceFiles.forEach((f) => form.append('references', f));
+
+    try {
       const res = await fetch(`${API_URL}/creatives/generate`, { method: 'POST', body: form });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        setActiveGenerations((prev) => prev.filter((g) => g.id !== genId));
         setError(data.error || data.details || `Ошибка ${res.status}`);
         return;
       }
+      setActiveGenerations((prev) => prev.map((g) => (g.id === genId ? { ...g, status: 'done' } : g)));
       setGeneratedImage(data.image ?? null);
       setImageMime(data.mimeType ?? 'image/png');
       setHistory(Array.isArray(data.history) ? data.history : []);
@@ -551,10 +629,12 @@ export default function CreativesPage() {
       setChatMode(false);
       setChatLog([]);
       await loadHistory();
+      setTimeout(() => {
+        setActiveGenerations((prev) => prev.filter((g) => g.id !== genId));
+      }, 1000);
     } catch (e) {
+      setActiveGenerations((prev) => prev.filter((g) => g.id !== genId));
       setError(e.message || 'Ошибка сети');
-    } finally {
-      setLoading(false);
     }
   }, [
     selectedModel,
@@ -570,7 +650,10 @@ export default function CreativesPage() {
     language,
     style,
     targetAudience,
-    brandColors,
+    colorBackground,
+    colorAccent,
+    colorText,
+    colorSecondary,
     fonts,
     logoFiles,
     compositionFiles,
@@ -642,7 +725,7 @@ export default function CreativesPage() {
     }
   };
 
-  const showEmptyState = !loading && historyItems.length === 0;
+  const showEmptyState = activeGenerations.length === 0 && historyItems.length === 0;
 
   return (
   <motion.div
@@ -818,15 +901,15 @@ export default function CreativesPage() {
             />
           </div>
 
-          {/* Brand colors */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Цвета бренда</label>
-            <Input
-              value={brandColors}
-              onChange={(e) => setBrandColors(e.target.value)}
-              placeholder="#1A1A2E, #E94560 или 'синий, золотой'"
-              className="mt-2"
-            />
+          {/* Colors */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Цвета</label>
+            <div className="space-y-2 mt-2">
+              <ColorRow value={colorBackground} onChange={setColorBackground} label="Фон" />
+              <ColorRow value={colorAccent} onChange={setColorAccent} label="Акцент / CTA" />
+              <ColorRow value={colorText} onChange={setColorText} label="Текст" />
+              <ColorRow value={colorSecondary} onChange={setColorSecondary} label="Доп." />
+            </div>
           </div>
 
           {/* Fonts */}
@@ -879,23 +962,29 @@ export default function CreativesPage() {
 
           {/* Generate button */}
           <button
+            type="button"
             onClick={handleGenerate}
-            disabled={loading}
-            className={cn(
-              'w-full h-11 rounded-xl font-medium text-sm transition-all duration-200',
-              'text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2'
-            )}
+            className="w-full h-11 rounded-xl font-medium text-sm transition-all duration-200 text-white flex items-center justify-center gap-2"
             style={{
-              background: loading ? 'hsl(var(--muted))' : 'linear-gradient(135deg, #a855f7 0%, #ec4899 50%, #f97316 100%)',
-              boxShadow: loading ? 'none' : '0 0 20px rgba(168,85,247,0.4)',
+              background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 50%, #f97316 100%)',
+              boxShadow: '0 0 20px rgba(168,85,247,0.4)',
             }}
           >
-            {loading
-              ? <><Loader2 className="h-4 w-4 animate-spin" />Генерирую...</>
-              : <><Sparkles className="h-4 w-4" />Сгенерировать</>}
+            {activeGenerations.length > 0 ? (
+              <><Loader2 className="h-4 w-4 animate-spin" />Генерирую ({activeGenerations.length})...</>
+            ) : (
+              <><Sparkles className="h-4 w-4" />Сгенерировать</>
+            )}
           </button>
 
-          {error && <p className="text-xs text-destructive bg-destructive/10 rounded-lg p-3">{error}</p>}
+          {error && (
+            <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 rounded-lg p-3">
+              <span className="flex-1">{error}</span>
+              <button type="button" onClick={() => setError('')} className="shrink-0 p-0.5 rounded hover:bg-destructive/20" aria-label="Закрыть">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
 
         </div>
       </ScrollArea>
@@ -920,18 +1009,24 @@ export default function CreativesPage() {
 
         <div className="flex-1 overflow-y-auto overflow-x-hidden">
           <div className="p-6">
-            {loading && (
-              <div className="mb-4">
-                <div
-                  className="w-full rounded-xl overflow-hidden bg-muted relative"
-                  style={{ aspectRatio: format === '16:9' ? '16/9' : format === '9:16' ? '9/16' : format === '4:5' ? '4/5' : '1/1', maxHeight: 300 }}
-                >
-                  <div className="absolute inset-0 animate-pulse bg-muted" />
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-muted-foreground">
-                    <Loader2 className="h-8 w-8 animate-spin opacity-40" />
-                    <span className="text-xs opacity-40">Генерирую...</span>
-                  </div>
-                </div>
+            {activeGenerations.length > 0 && (
+              <div className="mb-4 flex flex-wrap gap-4">
+                {activeGenerations.map((gen) => {
+                  const ratio = gen.format === '16:9' ? '16/9' : gen.format === '9:16' ? '9/16' : gen.format === '4:5' ? '4/5' : '1/1';
+                  return (
+                    <div
+                      key={gen.id}
+                      className="rounded-xl overflow-hidden bg-muted relative shrink-0"
+                      style={{ aspectRatio: ratio, width: 220, maxHeight: 300 }}
+                    >
+                      <div className="absolute inset-0 animate-pulse bg-muted" />
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                        <Loader2 className="h-8 w-8 animate-spin opacity-40" />
+                        <span className="text-xs opacity-40">Генерирую...</span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -952,7 +1047,7 @@ export default function CreativesPage() {
               </div>
             )}
 
-            {(!showEmptyState || loading) && !(historyLoading && historyItems.length === 0) && (
+            {(!showEmptyState || activeGenerations.length > 0) && !(historyLoading && historyItems.length === 0) && (
               <JustifiedGallery
                 items={historyItems}
                 onItemClick={setPreviewItem}

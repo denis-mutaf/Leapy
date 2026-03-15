@@ -107,7 +107,10 @@ function buildGenerateParts(files, body) {
   const language = body.language?.trim() || 'ru';
   const style = body.style?.trim() || 'minimal';
   const targetAudience = body.targetAudience?.trim() || '';
-  const brandColors = body.brandColors?.trim() || '';
+  const colorBackground = body.colorBackground?.trim() || '';
+  const colorAccent = body.colorAccent?.trim() || '';
+  const colorText = body.colorText?.trim() || '';
+  const colorSecondary = body.colorSecondary?.trim() || '';
   const fonts = body.fonts?.trim() || '';
 
   const languageMap = {
@@ -134,10 +137,15 @@ function buildGenerateParts(files, body) {
   if (targetAudience) systemLines.push(`Target audience: ${targetAudience}`);
   systemLines.push(`Visual style: ${styleMap[style] || styleMap.minimal}`);
   systemLines.push(`All text on the creative must be in: ${languageMap[language] || 'Russian'}`);
-  if (brandColors) {
-    systemLines.push(`MANDATORY BRAND COLORS — this is non-negotiable:`);
-    systemLines.push(`Primary palette: ${brandColors}`);
-    systemLines.push(`RULE: Every background, button, text element, and decorative shape MUST use ONLY these colors. Do not introduce any colors outside this palette. If you use a color not in this list, the output is considered a failure.`);
+
+  const hasColors = colorBackground || colorAccent || colorText || colorSecondary;
+  if (hasColors) {
+    systemLines.push('MANDATORY COLOR ROLES — apply each color strictly to its designated role only:');
+    if (colorBackground) systemLines.push(`- BACKGROUND: ${colorBackground} — use ONLY for main background surfaces. Do not use this color for text, buttons, or decorative elements.`);
+    if (colorAccent) systemLines.push(`- ACCENT / CTA: ${colorAccent} — use ONLY for buttons, badges, price tags, discount labels, CTA elements, and highlights. This is the action color.`);
+    if (colorText) systemLines.push(`- TEXT: ${colorText} — use ONLY for headlines, body text, and labels.`);
+    if (colorSecondary) systemLines.push(`- SECONDARY: ${colorSecondary} — use for supporting elements, borders, icons, decorative shapes.`);
+    systemLines.push('RULE: Do not mix these roles. Do not use accent color as background. Do not use background color as text. Each color has one job.');
   }
 
   systemLines.push('');
@@ -304,12 +312,11 @@ router.post('/generate', (req, res, next) => {
     const imageBuffer = Buffer.from(imageData, 'base64');
     const { storagePath, imageUrl } = await uploadToSupabaseStorage(imageBuffer, mimeType);
 
-    const colorsRaw = req.body.colors;
-    let colors = [];
-    try {
-      if (typeof colorsRaw === 'string') colors = JSON.parse(colorsRaw);
-      else if (Array.isArray(colorsRaw)) colors = colorsRaw;
-    } catch (_) {}
+    const colorBackground = req.body.colorBackground?.trim() || '';
+    const colorAccent = req.body.colorAccent?.trim() || '';
+    const colorText = req.body.colorText?.trim() || '';
+    const colorSecondary = req.body.colorSecondary?.trim() || '';
+    const colors = [colorBackground, colorAccent, colorText, colorSecondary].filter(Boolean);
 
     const row = {
       model_key: modelKey,
