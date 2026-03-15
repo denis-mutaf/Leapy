@@ -614,7 +614,17 @@ export default function CreativesPage() {
       const res = await fetch(`${API_URL}/creatives/parse-product`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: productUrl }),
+        body: JSON.stringify({
+          url: productUrl,
+          settings: {
+            style,
+            language,
+            goals,
+            targetAudience,
+            industry,
+            format,
+          },
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -636,7 +646,7 @@ export default function CreativesPage() {
     } finally {
       setParsing(false);
     }
-  }, [productUrl, API_URL, handleFetchImageUrl]);
+  }, [productUrl, API_URL, handleFetchImageUrl, style, language, goals, targetAudience, industry, format]);
 
   const loadHistory = async () => {
     setHistoryLoading(true);

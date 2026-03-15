@@ -466,7 +466,7 @@ router.post('/chat', async (req, res) => {
 // ── POST /creatives/parse-product ──────────────────────────────────────────────
 
 router.post('/parse-product', async (req, res) => {
-  const { url } = req.body || {};
+  const { url, settings = {} } = req.body || {};
   if (!url?.trim()) return res.status(400).json({ error: 'URL is required' });
 
   try {
@@ -491,6 +491,29 @@ router.post('/parse-product', async (req, res) => {
       || html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:image"/)?.[1]
       || null;
 
+    const styleDescriptions = {
+      minimal: 'clean minimalist, lots of white space, simple composition',
+      bold: 'bold and vibrant, high energy, strong contrast, eye-catching',
+      luxury: 'luxury premium, elegant, sophisticated, high-end editorial',
+      massmarket: 'friendly, accessible, warm, everyday lifestyle',
+    };
+
+    const goalDescriptions = {
+      traffic: 'drive clicks and website visits',
+      lead: 'generate leads and form submissions',
+      awareness: 'build brand awareness and recognition',
+      retargeting: 're-engage warm audience, remind of product',
+    };
+
+    const styleHint = styleDescriptions[settings.style] || 'clean and professional';
+    const goalsHint = Array.isArray(settings.goals) && settings.goals.length > 0
+      ? settings.goals.map((g) => goalDescriptions[g] || g).join(', ')
+      : 'general advertising';
+    const audienceHint = settings.targetAudience || 'general audience';
+    const industryHint = settings.industry || '';
+    const languageHint = settings.language || 'ru';
+    const formatHint = settings.format || '1:1';
+
     const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -514,27 +537,34 @@ Required fields:
   "description": "short product description, max 100 chars",
   "headline": "catchy ad headline based on product name, max 60 chars",
   "subheadline": "benefit-focused subheadline, max 80 chars",
-  "cta": "call to action text (Купить сейчас / Cumpără acum etc)",
+  "cta": "call to action text based on language: ru=Купить сейчас, ro=Cumpără acum, en=Buy Now",
   "extra_text": "discount badge text or promo label if any (e.g. -20%, Livrare gratuită)",
   "image_url": "${ogImage || 'null'}",
-  "language": "ru or ro or en based on page language",
+  "language": "${languageHint}",
   "visual_prompt": "see instructions below"
 }
 
 VISUAL PROMPT INSTRUCTIONS:
-For "visual_prompt" — write a short English prompt (max 120 chars) describing the ideal lifestyle scene for this product in a Facebook/Instagram ad.
-Rules:
-- The product must be the hero of the scene, shown IN USE or in its natural context
-- Think like an art director: where would this product look most desirable?
-- Examples:
-  - Chainsaw → "chainsaw cutting a large log in a forest, sawdust flying, golden hour light, cinematic"
-  - Hair brush → "woman brushing shiny hair in front of mirror, soft morning light, clean bathroom"
-  - Steam iron → "steam iron gliding over white shirt on ironing board, steam rising, bright laundry room"
-  - Kitchen chair → "elegant chair at a set dining table, warm evening light, cozy home interior"
-  - Face cream → "woman applying cream in front of mirror, dewy skin, minimal bathroom, natural light"
-  - Drill → "man drilling into wall mounting a shelf, focused expression, modern apartment"
-- Do NOT describe the ad layout, text, or logo — only the visual scene
-- Make it photorealistic and specific
+Write a complete English image generation prompt (max 200 chars) for a Facebook/Instagram ad creative.
+
+Context to apply:
+- Ad style: ${styleHint}
+- Ad goals: ${goalsHint}
+- Target audience: ${audienceHint}
+${industryHint ? `- Industry: ${industryHint}` : ''}
+- Format: ${formatHint} aspect ratio
+
+Rules for the visual_prompt:
+1. Product must be the hero — shown IN USE or in its natural lifestyle context
+2. Choose a scene that makes the product look most desirable to the target audience
+3. Apply the ad style to the scene description
+4. End with quality tags: "commercial photography, photorealistic, 4K, high resolution, sharp focus, professional lighting"
+5. Do NOT describe text, logos, or UI elements — only the visual scene
+
+Examples:
+- Chainsaw + bold + male audience → "powerful chainsaw splitting massive log in dense forest, sawdust explosion, dramatic golden hour backlight, commercial photography, photorealistic, 4K, high resolution, sharp focus, professional lighting"
+- Face cream + luxury + women 25-45 → "elegant woman applying premium cream in minimalist marble bathroom, soft morning light through frosted window, dewy glowing skin, commercial photography, photorealistic, 4K, high resolution, sharp focus, professional lighting"
+- Kitchen chair + minimal + families → "modern wooden chair at clean dining table set for family breakfast, warm natural light, Scandinavian interior, commercial photography, photorealistic, 4K, high resolution, sharp focus, professional lighting"
 
 HTML (first 8000 chars):
 ${html.substring(0, 8000)}`,
