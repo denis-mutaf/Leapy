@@ -26,13 +26,8 @@ const ai = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 const memoryStorage = multer.memoryStorage();
 
 function fileFilter(req, file, cb) {
-  const field = file.fieldname;
-  const mimetype = file.mimetype || '';
-  if (field === 'references') {
-    if (mimetype.startsWith('image/')) return cb(null, true);
-    return cb(new Error('references: only image/* allowed'));
-  }
-  cb(null, true);
+  if (file.mimetype?.startsWith('image/')) return cb(null, true);
+  cb(new Error(`${file.fieldname}: only image/* allowed`));
 }
 
 const upload = multer({
@@ -40,6 +35,8 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter,
 }).fields([
+  { name: 'brandbook', maxCount: 1 },
+  { name: 'photos', maxCount: 3 },
   { name: 'references', maxCount: 5 },
 ]);
 
@@ -48,17 +45,47 @@ const upload = multer({
  */
 function buildGenerateParts(files, body) {
   const parts = [];
+  const brandbook = files?.brandbook || [];
+  const photos = files?.photos || [];
   const references = files?.references || [];
 
-  for (const file of references) {
+  if (brandbook.length > 0) {
+    for (const file of brandbook) {
+      parts.push({
+        inlineData: {
+          mimeType: file.mimetype || 'image/png',
+          data: file.buffer.toString('base64'),
+        },
+      });
+    }
     parts.push({
-      inlineData: {
-        mimeType: file.mimetype || 'image/png',
-        data: file.buffer.toString('base64'),
-      },
+      text: 'Above: brand identity / brandbook. Use these colors, fonts, and visual style strictly.',
     });
   }
+
+  if (photos.length > 0) {
+    for (const file of photos) {
+      parts.push({
+        inlineData: {
+          mimeType: file.mimetype || 'image/png',
+          data: file.buffer.toString('base64'),
+        },
+      });
+    }
+    parts.push({
+      text: 'Above: main composition photos. Use these as the primary visual content of the creative.',
+    });
+  }
+
   if (references.length > 0) {
+    for (const file of references) {
+      parts.push({
+        inlineData: {
+          mimeType: file.mimetype || 'image/png',
+          data: file.buffer.toString('base64'),
+        },
+      });
+    }
     parts.push({
       text: 'Above: existing reference creatives. Replicate their overall layout, composition, and visual style.',
     });
