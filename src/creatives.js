@@ -103,6 +103,58 @@ function buildGenerateParts(files, body) {
   const extraText = body.extraText || '';
   const userPrompt = body.userPrompt || '';
 
+  const industry = body.industry?.trim() || '';
+  const language = body.language?.trim() || 'ru';
+  const style = body.style?.trim() || 'minimal';
+  const targetAudience = body.targetAudience?.trim() || '';
+  const brandColors = body.brandColors?.trim() || '';
+  const fonts = body.fonts?.trim() || '';
+
+  const languageMap = {
+    ru: 'Russian',
+    ro: 'Romanian',
+    en: 'English',
+  };
+  const styleMap = {
+    minimal: 'clean minimalist — lots of white space, simple typography, restrained color palette',
+    bold: 'bold and vibrant — strong colors, large typography, high energy, attention-grabbing',
+    luxury: 'luxury premium — elegant typography, dark or gold tones, sophisticated layout, high-end feel',
+    massmarket: 'mass market — friendly, accessible, clear messaging, broad appeal',
+  };
+
+  const systemLines = [
+    'You are an expert advertising creative designer with 15+ years of experience creating high-converting ads.',
+    '',
+    'TASK: Create a production-ready advertising creative that can be directly uploaded to Facebook/Instagram Ads Manager.',
+    '',
+    '## REQUIREMENTS',
+  ];
+
+  if (industry) systemLines.push(`Industry: ${industry}`);
+  if (targetAudience) systemLines.push(`Target audience: ${targetAudience}`);
+  systemLines.push(`Visual style: ${styleMap[style] || styleMap.minimal}`);
+  systemLines.push(`All text on the creative must be in: ${languageMap[language] || 'Russian'}`);
+  if (brandColors) {
+    systemLines.push(`MANDATORY BRAND COLORS — this is non-negotiable:`);
+    systemLines.push(`Primary palette: ${brandColors}`);
+    systemLines.push(`RULE: Every background, button, text element, and decorative shape MUST use ONLY these colors. Do not introduce any colors outside this palette. If you use a color not in this list, the output is considered a failure.`);
+  }
+
+  systemLines.push('');
+  systemLines.push('## DESIGN RULES');
+  systemLines.push('- Follow the brandbook strictly if provided (colors, fonts, logo placement)');
+  systemLines.push('- Use provided photos as the main visual content — do not replace or alter them');
+  systemLines.push('- Replicate the layout and composition style from reference creatives if provided');
+  systemLines.push('- All text must be legible, crisp, properly sized and positioned');
+  systemLines.push('- The headline must be the most prominent text element');
+  systemLines.push('- CTA must be clearly visible, preferably in a button or highlighted element');
+  systemLines.push('- Do NOT add watermarks, placeholder text, lorem ipsum, or any text not specified');
+  systemLines.push('- Do NOT add logos or brand elements not provided in the materials');
+  systemLines.push('- Output must be pixel-perfect, ready for paid advertising — no drafts, no mockups');
+  systemLines.push('');
+  systemLines.push('## OUTPUT');
+  systemLines.push('Return only the final creative image. No explanations, no variations, no text outside the image.');
+
   const lines = [`Aspect ratio / format: ${format}`];
   if (colors.length > 0) lines.push(`Brand colors — use these exactly: ${colors.join(', ')}`);
   if (headline) lines.push(`Main headline: "${headline}"`);
@@ -119,13 +171,14 @@ function buildGenerateParts(files, body) {
     else if (Array.isArray(goalsRaw)) goals = goalsRaw;
   } catch (_) {}
   if (goals.length > 0) lines.push(`Creative goal(s): ${goals.join(', ')} — optimize the composition, message, and CTA for these objectives.`);
+  if (fonts) lines.push(`FONTS — use exactly these typefaces: ${fonts}. Do not use any other fonts.`);
 
-  // system prompt override or default
+  // system prompt override or comprehensive default
   const systemPrompt = body.systemPrompt?.trim() || '';
   if (systemPrompt) {
     lines.push(systemPrompt);
   } else {
-    lines.push('Create a high-quality advertising creative (banner/ad) with the requirements above.');
+    lines.push(systemLines.join('\n'));
   }
 
   parts.push({ text: lines.join('\n') });

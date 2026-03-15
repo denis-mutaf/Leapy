@@ -43,6 +43,19 @@ const GOALS = [
   { value: 'retargeting', label: 'Ретаргетинг', sub: 'Догрев' },
 ];
 
+const LANGUAGES = [
+  { key: 'ru', label: 'RU' },
+  { key: 'ro', label: 'RO' },
+  { key: 'en', label: 'EN' },
+];
+
+const STYLES = [
+  { key: 'minimal', label: 'Минимал', tag: 'Чисто' },
+  { key: 'bold', label: 'Яркий', tag: 'Громко' },
+  { key: 'luxury', label: 'Люкс', tag: 'Премиум' },
+  { key: 'massmarket', label: 'Масс', tag: 'Широко' },
+];
+
 const MODEL_LABELS = {
   'nano-banana': 'NB',
   'nano-banana-2': 'NB 2',
@@ -386,6 +399,12 @@ export default function CreativesPage() {
   const [format, setFormat] = useState('1:1');
   const [imageSize, setImageSize] = useState('1K');
   const [goals, setGoals] = useState([]);
+  const [industry, setIndustry] = useState('');
+  const [language, setLanguage] = useState('ru');
+  const [style, setStyle] = useState('minimal');
+  const [targetAudience, setTargetAudience] = useState('');
+  const [brandColors, setBrandColors] = useState('');
+  const [fonts, setFonts] = useState('');
   const [logoFiles, setLogoFiles] = useState([]);
   const [compositionFiles, setCompositionFiles] = useState([]);
   const [referenceFiles, setReferenceFiles] = useState([]);
@@ -416,6 +435,12 @@ export default function CreativesPage() {
       if (saved.format != null) setFormat(saved.format);
       if (saved.imageSize != null) setImageSize(saved.imageSize);
       if (Array.isArray(saved.goals)) setGoals(saved.goals);
+      if (saved.industry != null) setIndustry(saved.industry);
+      if (saved.language != null) setLanguage(saved.language);
+      if (saved.style != null) setStyle(saved.style);
+      if (saved.targetAudience != null) setTargetAudience(saved.targetAudience);
+      if (saved.brandColors != null) setBrandColors(saved.brandColors);
+      if (saved.fonts != null) setFonts(saved.fonts);
       if (saved.headline != null) setHeadline(saved.headline);
       if (saved.subheadline != null) setSubheadline(saved.subheadline);
       if (saved.cta != null) setCta(saved.cta);
@@ -429,10 +454,45 @@ export default function CreativesPage() {
 
   useEffect(() => {
     saveForm(
-      { selectedModel, format, imageSize, goals, headline, subheadline, cta, extraText, userPrompt },
+      {
+        selectedModel,
+        format,
+        imageSize,
+        goals,
+        industry,
+        language,
+        style,
+        targetAudience,
+        brandColors,
+        fonts,
+        headline,
+        subheadline,
+        cta,
+        extraText,
+        userPrompt,
+      },
       { logoFiles, compositionFiles, referenceFiles }
     );
-  }, [selectedModel, format, imageSize, goals, headline, subheadline, cta, extraText, userPrompt, logoFiles, compositionFiles, referenceFiles]);
+  }, [
+    selectedModel,
+    format,
+    imageSize,
+    goals,
+    industry,
+    language,
+    style,
+    targetAudience,
+    brandColors,
+    fonts,
+    headline,
+    subheadline,
+    cta,
+    extraText,
+    userPrompt,
+    logoFiles,
+    compositionFiles,
+    referenceFiles,
+  ]);
 
   const loadHistory = async () => {
     setHistoryLoading(true);
@@ -468,6 +528,12 @@ export default function CreativesPage() {
       form.append('extraText', extraText);
       form.append('userPrompt', userPrompt);
       form.append('goals', JSON.stringify(goals));
+      form.append('industry', industry);
+      form.append('language', language);
+      form.append('style', style);
+      form.append('targetAudience', targetAudience);
+      form.append('brandColors', brandColors);
+      form.append('fonts', fonts);
       logoFiles.forEach((f) => form.append('brandbook', f));
       compositionFiles.forEach((f) => form.append('photos', f));
       referenceFiles.forEach((f) => form.append('references', f));
@@ -500,6 +566,12 @@ export default function CreativesPage() {
     extraText,
     userPrompt,
     goals,
+    industry,
+    language,
+    style,
+    targetAudience,
+    brandColors,
+    fonts,
     logoFiles,
     compositionFiles,
     referenceFiles,
@@ -677,6 +749,95 @@ export default function CreativesPage() {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Industry */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Отрасль / Бизнес</label>
+            <Input
+              value={industry}
+              onChange={(e) => setIndustry(e.target.value)}
+              placeholder="Недвижимость, одежда, ресторан..."
+              className="mt-2"
+            />
+          </div>
+
+          {/* Language */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Язык креатива</label>
+            <div className="flex gap-2 mt-2">
+              {LANGUAGES.map(l => (
+                <button
+                  key={l.key}
+                  type="button"
+                  onClick={() => setLanguage(l.key)}
+                  className={cn(
+                    'flex-1 flex flex-col items-center justify-center gap-0.5 h-14 rounded-xl border text-center transition-colors duration-150 px-2',
+                    language === l.key
+                      ? 'bg-foreground text-background border-foreground'
+                      : 'bg-transparent text-foreground border-border hover:border-foreground/40'
+                  )}
+                >
+                  <span className="text-sm font-medium">{l.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Style */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Стиль</label>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {STYLES.map(s => (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => setStyle(s.key)}
+                  className={cn(
+                    'flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 h-14 rounded-xl border text-center transition-colors duration-150 px-2',
+                    style === s.key
+                      ? 'bg-foreground text-background border-foreground'
+                      : 'bg-transparent text-foreground border-border hover:border-foreground/40'
+                  )}
+                >
+                  <span className="text-sm font-medium">{s.label}</span>
+                  <span className="text-[11px] opacity-50">{s.tag}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Target audience */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Целевая аудитория</label>
+            <Input
+              value={targetAudience}
+              onChange={(e) => setTargetAudience(e.target.value)}
+              placeholder="Семьи 25-45 лет, покупатели недвижимости..."
+              className="mt-2"
+            />
+          </div>
+
+          {/* Brand colors */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Цвета бренда</label>
+            <Input
+              value={brandColors}
+              onChange={(e) => setBrandColors(e.target.value)}
+              placeholder="#1A1A2E, #E94560 или 'синий, золотой'"
+              className="mt-2"
+            />
+          </div>
+
+          {/* Fonts */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Шрифты</label>
+            <Input
+              value={fonts}
+              onChange={(e) => setFonts(e.target.value)}
+              placeholder="Montserrat Bold — заголовки, Inter Regular — текст"
+              className="mt-2"
+            />
           </div>
 
           <div className="h-px bg-border" />
