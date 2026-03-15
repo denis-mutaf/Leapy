@@ -6,7 +6,7 @@ import creativesRouter from './src/creatives.js';
 
 const PORT = process.env.PORT || 3000;
 
-const REQUIRED_ENV = ['PBX_CRM_TOKEN', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GLADIA_API_KEY', 'AMO_LONG_TOKEN', 'AMO_SUBDOMAIN', 'SUPABASE_URL', 'SUPABASE_SERVICE_KEY'];
+const REQUIRED_ENV = ['PBX_CRM_TOKEN', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'AMO_LONG_TOKEN', 'AMO_SUBDOMAIN', 'SUPABASE_URL', 'SUPABASE_SERVICE_KEY'];
 const missing = REQUIRED_ENV.filter((key) => !process.env[key]);
 if (missing.length > 0) {
   console.error(`[STARTUP] Отсутствуют обязательные переменные окружения: ${missing.join(', ')}`);
@@ -36,8 +36,8 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 

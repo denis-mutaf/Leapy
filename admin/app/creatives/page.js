@@ -10,7 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Sparkles, Loader2, Download, RefreshCw, MessageSquare, SendHorizontal, X, ImageOff, ImageIcon, ChevronDown } from 'lucide-react';
+import { Sparkles, Loader2, Download, RefreshCw, MessageSquare, SendHorizontal, X, ImageOff, ImageIcon, Settings2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import justifiedLayout from 'justified-layout';
 
@@ -91,177 +91,158 @@ function AutoResizeTextarea({ value, onChange, placeholder, className }) {
   );
 }
 
-function FileAttachButton({ label, files, onFilesChange, maxFiles = 5, accept = 'image/*' }) {
-  const inputRef = useRef(null);
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  const previewUrls = useMemo(() => files.map(f => URL.createObjectURL(f)), [files]);
-  useEffect(() => { return () => previewUrls.forEach(u => URL.revokeObjectURL(u)); }, [previewUrls]);
+function PhotoUploadZone({ logoFiles, onLogoChange, compositionFiles, onCompositionChange, referenceFiles, onReferenceChange }) {
+  const fileInputRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+  const [loadingUrls, setLoadingUrls] = useState(new Set());
 
   useEffect(() => {
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+    const handlePaste = (e) => {
+      const items = Array.from(e.clipboardData?.items || []);
+      const imageItem = items.find(item => item.type.startsWith('image/'));
+      if (!imageItem) return;
+      const file = imageItem.getAsFile();
+      if (file) {
+        const named = new File([file], `paste-${Date.now()}.png`, { type: file.type });
+        onCompositionChange(prev => [...prev, named].slice(0, 3));
+      }
+    };
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [onCompositionChange]);
 
-  const addFiles = useCallback((newFiles) => {
-    if (!newFiles?.length) return;
-    const combined = [...files, ...Array.from(newFiles)].slice(0, maxFiles);
-    onFilesChange(combined);
-  }, [files, maxFiles, onFilesChange]);
-
-  const removeAt = (i) => {
-    onFilesChange(files.filter((_, idx) => idx !== i));
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length) onCompositionChange(prev => [...prev, ...files].slice(0, 3));
   };
 
-  const isActive = files.length > 0;
+  const allThumbs = [
+    ...logoFiles.map(f => ({ file: f, type: 'logo' })),
+    ...compositionFiles.map(f => ({ file: f, type: 'composition' })),
+  ];
+
+  const removeThumb = (type, thumbIndex) => {
+    if (type === 'logo') onLogoChange([]);
+    else onCompositionChange(prev => prev.filter((_, i) => i !== thumbIndex - logoFiles.length));
+  };
 
   return (
-    <div ref={ref} className="relative shrink-0">
-      <input
-        ref={inputRef}
-        type="file"
-        accept={accept}
-        multiple={maxFiles > 1}
-        className="hidden"
-        onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
-      />
-      <button
-        type="button"
-        onClick={() => files.length > 0 ? setOpen(v => !v) : inputRef.current?.click()}
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Фото товара</label>
+        {referenceFiles.length > 0 && (
+          <span className="text-[10px] text-muted-foreground">{referenceFiles.length} реф.</span>
+        )}
+      </div>
+
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
+        onClick={() => fileInputRef.current?.click()}
         className={cn(
-          'flex items-center gap-1.5 px-3 h-9 rounded-xl text-sm font-medium transition-all duration-150',
-          isActive
-            ? 'bg-primary/10 text-primary border border-primary/30'
-            : 'bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted border border-transparent'
+          'relative flex items-center gap-3 px-3 py-2.5 rounded-lg border border-dashed cursor-pointer transition-colors duration-150',
+          dragging
+            ? 'border-primary bg-primary/5'
+            : 'border-border hover:border-foreground/30 hover:bg-accent/30'
         )}
       >
-        <ImageIcon className="h-3.5 w-3.5" />
-        <span>{label}</span>
-        {files.length > 0 && (
-          <span className="h-4 w-4 rounded-full bg-primary text-[10px] text-primary-foreground flex items-center justify-center font-medium">
-            {files.length}
-          </span>
-        )}
-        {files.length > 0 && <ChevronDown className={cn('h-3 w-3 transition-transform', open && 'rotate-180')} />}
-      </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/'));
+            onCompositionChange(prev => [...prev, ...files].slice(0, 3));
+            e.target.value = '';
+          }}
+        />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-foreground/70">Вставить из буфера</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            Нажмите <kbd className="px-1 py-0.5 rounded text-[9px] bg-muted border border-border font-mono">⌘V</kbd> или перетащите файл
+          </p>
+        </div>
+        <div className="shrink-0 h-7 w-7 rounded-md bg-muted flex items-center justify-center">
+          <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
+        </div>
+      </div>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: 4, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 4, scale: 0.97 }}
-            transition={{ duration: 0.12 }}
-            className="absolute bottom-full mb-2 left-0 z-50 bg-card border border-border rounded-xl shadow-xl overflow-hidden p-2"
-            style={{ minWidth: 180 }}
-          >
-            <div className="grid grid-cols-3 gap-1.5 mb-2">
-              {files.map((file, i) => (
-                <div key={i} className="relative group rounded-lg overflow-hidden aspect-square bg-muted">
-                  <img src={previewUrls[i]} alt={file.name} className="w-full h-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => removeAt(i)}
-                    className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-            {files.length < maxFiles && (
-              <button
-                type="button"
-                onClick={() => inputRef.current?.click()}
-                className="w-full text-xs text-muted-foreground hover:text-foreground py-1.5 border border-dashed border-border rounded-lg transition-colors"
+      {allThumbs.length > 0 && (
+        <div className="flex gap-1.5 flex-wrap">
+          {allThumbs.map(({ file, type }, i) => {
+            const url = URL.createObjectURL(file);
+            return (
+              <motion.div
+                key={`${type}-${i}`}
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.15 }}
+                className="relative group w-14 h-14 rounded-lg overflow-hidden border border-border bg-muted shrink-0"
               >
-                + Добавить
-              </button>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-function DropdownButton({ label, value, options, onChange }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const selected = Array.isArray(value)
-    ? options.filter(o => value.includes(o.value))
-    : options.find(o => o.value === value);
-
-  const displayLabel = Array.isArray(value)
-    ? value.length > 0 ? value.map(v => options.find(o => o.value === v)?.label).join(', ') : label
-    : selected?.label || label;
-
-  const isActive = Array.isArray(value) ? value.length > 0 : !!value;
-
-  return (
-    <div ref={ref} className="relative shrink-0">
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        className={cn(
-          'flex items-center gap-1.5 px-3 h-9 rounded-xl text-sm font-medium transition-all duration-150',
-          isActive
-            ? 'bg-primary/10 text-primary border border-primary/30'
-            : 'bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted border border-transparent'
-        )}
-      >
-        <span className="max-w-[100px] truncate">{displayLabel}</span>
-        <ChevronDown className={cn('h-3 w-3 transition-transform', open && 'rotate-180')} />
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: 4, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 4, scale: 0.97 }}
-            transition={{ duration: 0.12 }}
-            className="absolute bottom-full mb-2 left-0 z-50 bg-card border border-border rounded-xl shadow-xl overflow-hidden min-w-[140px]"
-          >
-            {options.map(opt => {
-              const isSelected = Array.isArray(value) ? value.includes(opt.value) : value === opt.value;
-              return (
+                <img
+                  src={url}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  onLoad={() => URL.revokeObjectURL(url)}
+                />
+                {type === 'logo' && (
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-[8px] text-white text-center py-0.5">лого</div>
+                )}
                 <button
-                  key={opt.value}
                   type="button"
-                  onClick={() => {
-                    if (Array.isArray(value)) {
-                      onChange(isSelected ? value.filter(v => v !== opt.value) : [...value, opt.value]);
-                    } else {
-                      onChange(opt.value);
-                      setOpen(false);
-                    }
-                  }}
-                  className={cn(
-                    'w-full flex items-center justify-between px-3 py-2.5 text-sm transition-colors hover:bg-accent',
-                    isSelected && 'text-primary font-medium'
-                  )}
+                  onClick={(e) => { e.stopPropagation(); removeThumb(type, i); }}
+                  className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                 >
-                  <div>
-                    <div>{opt.label}</div>
-                    {opt.sub && <div className="text-xs text-muted-foreground">{opt.sub}</div>}
-                  </div>
-                  {isSelected && <span className="text-primary ml-2">✓</span>}
+                  <X className="h-2.5 w-2.5" />
                 </button>
-              );
-            })}
-          </motion.div>
-        )}
-      </AnimatePresence>
+              </motion.div>
+            );
+          })}
+
+          {logoFiles.length === 0 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                const inp = document.createElement('input');
+                inp.type = 'file'; inp.accept = 'image/*';
+                inp.onchange = (ev) => {
+                  const f = ev.target.files?.[0];
+                  if (f) onLogoChange([f]);
+                };
+                inp.click();
+              }}
+              className="w-14 h-14 rounded-lg border border-dashed border-border bg-muted/50 flex flex-col items-center justify-center gap-0.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+            >
+              <ImageIcon className="h-3 w-3" />
+              <span className="text-[8px]">лого</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              const inp = document.createElement('input');
+              inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true;
+              inp.onchange = (ev) => {
+                const files = Array.from(ev.target.files || []);
+                onReferenceChange(prev => [...prev, ...files].slice(0, 5));
+              };
+              inp.click();
+            }}
+            className="w-14 h-14 rounded-lg border border-dashed border-border bg-muted/50 flex flex-col items-center justify-center gap-0.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+          >
+            <span className="text-lg leading-none">+</span>
+            <span className="text-[8px]">ещё</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -404,6 +385,64 @@ const formatDate = (str) =>
 const STORAGE_KEY = 'leapy_creatives_form';
 const STORAGE_TTL = 24 * 60 * 60 * 1000; // 1 day
 
+function BenefitsList({ benefits, onChange }) {
+  const add = () => { if (benefits.length < 4) onChange([...benefits, '']); };
+  const remove = (i) => onChange(benefits.filter((_, idx) => idx !== i));
+  const update = (i, val) => onChange(benefits.map((b, idx) => idx === i ? val : b));
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Преимущества</label>
+        {benefits.length < 4 && (
+          <button
+            type="button"
+            onClick={add}
+            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            + Добавить
+          </button>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        <AnimatePresence initial={false}>
+          {benefits.map((b, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.15 }}
+              className="flex gap-1.5 items-center"
+            >
+              <Input
+                value={b}
+                onChange={(e) => update(i, e.target.value)}
+                placeholder={
+                  i === 0 ? 'Бесплатная доставка до 3 дней' :
+                  i === 1 ? 'Гарантия 14 дней' :
+                  i === 2 ? 'Оплата при получении' :
+                  'Официальная гарантия'
+                }
+                className="flex-1 text-sm h-9"
+              />
+              {benefits.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => remove(i)}
+                  className="shrink-0 h-9 w-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
 async function saveForm(data, files = {}) {
   try {
     const logoB64 = await filesToBase64(files.logoFiles || []);
@@ -474,6 +513,7 @@ export default function CreativesPage() {
   const [subheadline, setSubheadline] = useState('');
   const [cta, setCta] = useState('');
   const [extraText, setExtraText] = useState('');
+  const [benefits, setBenefits] = useState(['']);
   const [userPrompt, setUserPrompt] = useState('');
   const [generatedImage, setGeneratedImage] = useState(null);
   const [imageMime, setImageMime] = useState(null);
@@ -495,6 +535,7 @@ export default function CreativesPage() {
   const [imageUrl, setImageUrl] = useState('');
   const [imageUrlLoading, setImageUrlLoading] = useState(false);
   const [imageUrlError, setImageUrlError] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     const saved = loadForm();
@@ -516,6 +557,7 @@ export default function CreativesPage() {
       if (saved.subheadline != null) setSubheadline(saved.subheadline);
       if (saved.cta != null) setCta(saved.cta);
       if (saved.extraText != null) setExtraText(saved.extraText);
+      if (Array.isArray(saved.benefits)) setBenefits(saved.benefits.length ? saved.benefits : ['']);
       if (saved.userPrompt != null) setUserPrompt(saved.userPrompt);
       if (saved.logoFiles?.length) setLogoFiles(base64ToFiles(saved.logoFiles));
       if (saved.compositionFiles?.length) setCompositionFiles(base64ToFiles(saved.compositionFiles));
@@ -545,6 +587,7 @@ export default function CreativesPage() {
         subheadline,
         cta,
         extraText,
+        benefits,
         userPrompt,
         productUrl,
         imageUrl,
@@ -569,6 +612,7 @@ export default function CreativesPage() {
     subheadline,
     cta,
     extraText,
+    benefits,
     userPrompt,
     productUrl,
     imageUrl,
@@ -637,6 +681,9 @@ export default function CreativesPage() {
       if (data.extra_text) setExtraText(data.extra_text);
       if (data.language) setLanguage(data.language);
       if (data.visual_prompt) setUserPrompt(data.visual_prompt);
+      if (Array.isArray(data.benefits) && data.benefits.length > 0) {
+        setBenefits(data.benefits.slice(0, 4));
+      }
       if (data.image_url && data.image_url !== 'null') {
         setImageUrl(data.image_url);
         handleFetchImageUrl(data.image_url);
@@ -681,6 +728,7 @@ export default function CreativesPage() {
     form.append('subheadline', subheadline);
     form.append('cta', cta);
     form.append('extraText', extraText);
+    form.append('benefits', JSON.stringify(benefits.filter(b => b.trim())));
     form.append('userPrompt', userPrompt);
     form.append('goals', JSON.stringify(goals));
     form.append('industry', industry);
@@ -727,6 +775,7 @@ export default function CreativesPage() {
     subheadline,
     cta,
     extraText,
+    benefits,
     userPrompt,
     goals,
     industry,
@@ -824,18 +873,23 @@ export default function CreativesPage() {
   >
     {/* LEFT PANEL — constructor */}
     <aside className="w-[400px] shrink-0 flex flex-col min-h-0 bg-background border-r border-border">
-      <div className="px-6 border-b border-border shrink-0 flex items-center" style={{ height: 'var(--panel-header-height)' }}>
-        <h2 className="text-lg font-semibold">Генератор</h2>
+      <div className="px-4 border-b border-border shrink-0 flex items-center justify-between" style={{ height: 'var(--panel-header-height)' }}>
+        <h2 className="text-base font-semibold">Генератор</h2>
+        <button
+          type="button"
+          onClick={() => setSettingsOpen(v => !v)}
+          className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        >
+          <Settings2 className="h-4 w-4" />
+        </button>
       </div>
       <ScrollArea className="flex-1">
-        <div className="px-6 py-5 space-y-5">
+        <div className="px-4 py-4 space-y-4">
 
-          {/* URL Parser */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Автозаполнение по ссылке товара
-            </label>
-            <div className="flex gap-2 mt-2">
+          {/* 1. URL autofill */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Ссылка на товар</label>
+            <div className="flex gap-2">
               <Input
                 value={productUrl}
                 onChange={(e) => setProductUrl(e.target.value)}
@@ -854,7 +908,7 @@ export default function CreativesPage() {
               </Button>
             </div>
             {parseError && (
-              <div className="mt-2 flex items-start gap-2 text-xs text-destructive bg-destructive/10 rounded-lg p-3">
+              <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 rounded-lg p-3">
                 <span className="flex-1">{parseError}</span>
                 <button type="button" onClick={() => setParseError('')} className="shrink-0">
                   <X className="h-3 w-3" />
@@ -863,249 +917,65 @@ export default function CreativesPage() {
             )}
           </div>
 
-          {/* Model */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Модель</label>
-            <div className="flex gap-2 mt-2">
-              {MODELS.map(m => (
-                <button
-                  key={m.key}
-                  type="button"
-                  onClick={() => setSelectedModel(m.key)}
-                  className={cn(
-                    'flex-1 flex flex-col items-center justify-center gap-0.5 h-14 rounded-xl border text-center transition-colors duration-150 px-2',
-                    selectedModel === m.key
-                      ? 'bg-foreground text-background border-foreground'
-                      : 'bg-transparent text-foreground border-border hover:border-foreground/40'
-                  )}
-                >
-                  <span className="text-sm font-medium">{m.label}</span>
-                  <span className="text-[11px] opacity-50">{m.tag}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* 2. Photo upload */}
+          <PhotoUploadZone
+            logoFiles={logoFiles}
+            onLogoChange={setLogoFiles}
+            compositionFiles={compositionFiles}
+            onCompositionChange={setCompositionFiles}
+            referenceFiles={referenceFiles}
+            onReferenceChange={setReferenceFiles}
+          />
 
-          {/* Format */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Формат</label>
-            <div className="flex gap-2 mt-2">
+          {/* 3. Format */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Формат</label>
+            <div className="flex gap-1.5">
               {FORMATS.map(f => (
                 <button
                   key={f.value}
                   type="button"
                   onClick={() => setFormat(f.value)}
                   className={cn(
-                    'flex-1 flex flex-col items-center justify-center gap-0.5 h-14 rounded-xl border text-center transition-colors duration-150 px-2',
-                    format === f.value
-                      ? 'bg-foreground text-background border-foreground'
-                      : 'bg-transparent text-foreground border-border hover:border-foreground/40'
+                    'flex-1 flex flex-col items-center justify-center gap-0.5 h-11 rounded-lg border text-center transition-colors duration-150',
+                    format === f.value ? 'bg-foreground text-background border-foreground' : 'bg-transparent text-foreground border-border hover:border-foreground/40'
                   )}
                 >
-                  <span className="text-sm font-medium">{f.value}</span>
-                  <span className="text-[11px] opacity-50">{f.label}</span>
+                  <span className="text-xs font-medium">{f.value}</span>
+                  <span className="text-[10px] opacity-50">{f.label}</span>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Resolution */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Разрешение</label>
-            <div className="flex gap-2 mt-2">
-              {RESOLUTIONS.map(r => (
-                <button
-                  key={r.key}
-                  type="button"
-                  onClick={() => setImageSize(r.key)}
-                  className={cn(
-                    'flex-1 flex flex-col items-center justify-center gap-0.5 h-14 rounded-xl border text-center transition-colors duration-150 px-2',
-                    imageSize === r.key
-                      ? 'bg-foreground text-background border-foreground'
-                      : 'bg-transparent text-foreground border-border hover:border-foreground/40'
-                  )}
-                >
-                  <span className="text-sm font-medium">{r.label}</span>
-                  <span className="text-[11px] opacity-50">{r.sub}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Goals */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Цель</label>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {GOALS.map(g => (
-                <button
-                  key={g.value}
-                  type="button"
-                  onClick={() => setGoals(prev => prev.includes(g.value) ? prev.filter(v => v !== g.value) : [...prev, g.value])}
-                  className={cn(
-                    'flex-1 flex flex-col items-center justify-center gap-0.5 h-14 rounded-xl border text-center transition-colors duration-150 px-2',
-                    goals.includes(g.value)
-                      ? 'bg-foreground text-background border-foreground'
-                      : 'bg-transparent text-foreground border-border hover:border-foreground/40'
-                  )}
-                >
-                  <span className="text-sm font-medium">{g.label}</span>
-                  <span className="text-[11px] opacity-50">{g.sub}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Industry */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Отрасль / Бизнес</label>
-            <Input
-              value={industry}
-              onChange={(e) => setIndustry(e.target.value)}
-              placeholder="Недвижимость, одежда, ресторан..."
-              className="mt-2"
-            />
-          </div>
-
-          {/* Language */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Язык креатива</label>
-            <div className="flex gap-2 mt-2">
-              {LANGUAGES.map(l => (
-                <button
-                  key={l.key}
-                  type="button"
-                  onClick={() => setLanguage(l.key)}
-                  className={cn(
-                    'flex-1 flex flex-col items-center justify-center gap-0.5 h-14 rounded-xl border text-center transition-colors duration-150 px-2',
-                    language === l.key
-                      ? 'bg-foreground text-background border-foreground'
-                      : 'bg-transparent text-foreground border-border hover:border-foreground/40'
-                  )}
-                >
-                  <span className="text-sm font-medium">{l.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Style */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Стиль</label>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {STYLES.map(s => (
-                <button
-                  key={s.key}
-                  type="button"
-                  onClick={() => setStyle(s.key)}
-                  className={cn(
-                    'flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 h-14 rounded-xl border text-center transition-colors duration-150 px-2',
-                    style === s.key
-                      ? 'bg-foreground text-background border-foreground'
-                      : 'bg-transparent text-foreground border-border hover:border-foreground/40'
-                  )}
-                >
-                  <span className="text-sm font-medium">{s.label}</span>
-                  <span className="text-[11px] opacity-50">{s.tag}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Target audience */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Целевая аудитория</label>
-            <Input
-              value={targetAudience}
-              onChange={(e) => setTargetAudience(e.target.value)}
-              placeholder="Семьи 25-45 лет, покупатели недвижимости..."
-              className="mt-2"
-            />
-          </div>
-
-          {/* Colors */}
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Цвета</label>
-            <div className="space-y-2 mt-2">
-              <ColorRow value={colorBackground} onChange={setColorBackground} label="Фон" />
-              <ColorRow value={colorAccent} onChange={setColorAccent} label="Акцент / CTA" />
-              <ColorRow value={colorText} onChange={setColorText} label="Текст" />
-              <ColorRow value={colorSecondary} onChange={setColorSecondary} label="Доп." />
-            </div>
-          </div>
-
-          {/* Fonts */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Шрифты</label>
-            <Input
-              value={fonts}
-              onChange={(e) => setFonts(e.target.value)}
-              placeholder="Montserrat Bold — заголовки, Inter Regular — текст"
-              className="mt-2"
-            />
-          </div>
-
-          <div className="h-px bg-border" />
-
-          {/* File attachments */}
-          <div className="space-y-3">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Материалы</label>
-            <div className="flex flex-col gap-2">
-              <FileAttachButton label="Лого" files={logoFiles} onFilesChange={setLogoFiles} maxFiles={1} />
-              <FileAttachButton label="Пример композиции" files={compositionFiles} onFilesChange={setCompositionFiles} maxFiles={3} />
-              <div className="flex gap-2 items-center">
-                <Input
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="https://site.com/image.webp"
-                  className="flex-1 text-sm"
-                  disabled={imageUrlLoading}
-                />
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="outline"
-                  className="shrink-0 h-9 w-9"
-                  disabled={imageUrlLoading || !imageUrl.trim()}
-                  onClick={() => handleFetchImageUrl(imageUrl)}
-                >
-                  {imageUrlLoading
-                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    : <Download className="h-3.5 w-3.5" />}
-                </Button>
-              </div>
-              {imageUrlError && (
-                <p className="text-xs text-destructive">{imageUrlError}</p>
-              )}
-              <FileAttachButton label="Референсы" files={referenceFiles} onFilesChange={setReferenceFiles} maxFiles={5} />
-            </div>
-          </div>
-
-          <div className="h-px bg-border" />
-
-          {/* Texts */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Тексты</label>
-            <div className="space-y-2 mt-2">
+          {/* 4. Texts */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Тексты</label>
+            <div className="space-y-1.5">
               <AutoResizeTextarea value={headline} onChange={(e) => setHeadline(e.target.value)} placeholder="Заголовок" />
               <AutoResizeTextarea value={subheadline} onChange={(e) => setSubheadline(e.target.value)} placeholder="Подзаголовок" />
-              <AutoResizeTextarea value={cta} onChange={(e) => setCta(e.target.value)} placeholder="CTA" />
-              <AutoResizeTextarea value={extraText} onChange={(e) => setExtraText(e.target.value)} placeholder="Доп. текст / плашки" />
+              <div className="flex gap-1.5">
+                <AutoResizeTextarea value={cta} onChange={(e) => setCta(e.target.value)} placeholder="CTA" className="flex-1" />
+                <AutoResizeTextarea value={extraText} onChange={(e) => setExtraText(e.target.value)} placeholder="Бейдж / плашка" className="flex-1" />
+              </div>
             </div>
           </div>
 
-          {/* Prompt */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Промпт</label>
+          <BenefitsList benefits={benefits} onChange={setBenefits} />
+
+          {/* 5. Prompt */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Промпт</label>
             <Textarea
-              rows={4}
-              className="resize-none mt-2 text-sm"
+              rows={3}
+              className="resize-none text-sm"
               placeholder="Дополнительные инструкции для модели..."
               value={userPrompt}
               onChange={(e) => setUserPrompt(e.target.value)}
             />
           </div>
 
-          {/* Generate button */}
+          {/* 6. Generate button */}
           <button
             type="button"
             onClick={handleGenerate}
@@ -1122,6 +992,7 @@ export default function CreativesPage() {
             )}
           </button>
 
+          {/* 7. Error block */}
           {error && (
             <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 rounded-lg p-3">
               <span className="flex-1">{error}</span>
@@ -1136,7 +1007,148 @@ export default function CreativesPage() {
     </aside>
 
     {/* RIGHT PANEL — gallery + chat */}
-    <section className="flex-1 flex min-h-0 overflow-hidden">
+    <section className="flex-1 flex min-h-0 overflow-hidden relative">
+
+      {/* Settings overlay */}
+      <AnimatePresence>
+        {settingsOpen && (
+          <>
+            <motion.div
+              key="settings-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="absolute inset-0 z-10"
+              onClick={() => setSettingsOpen(false)}
+            />
+            <motion.div
+              key="settings-panel"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ duration: 0.2, ease: 'easeInOut' }}
+              className="absolute right-0 top-0 bottom-0 z-20 w-[280px] bg-card border-l border-border flex flex-col shadow-xl"
+            >
+              <div className="px-4 border-b border-border shrink-0 flex items-center justify-between" style={{ height: 'var(--panel-header-height)' }}>
+                <h3 className="text-sm font-semibold">Настройки</h3>
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen(false)}
+                  className="h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <ScrollArea className="flex-1">
+                <div className="px-4 py-4 space-y-5">
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Модель</label>
+                    <div className="flex gap-1.5">
+                      {MODELS.map(m => (
+                        <button key={m.key} type="button" onClick={() => setSelectedModel(m.key)}
+                          className={cn('flex-1 flex flex-col items-center justify-center gap-0.5 h-11 rounded-lg border text-center transition-colors duration-150',
+                            selectedModel === m.key ? 'bg-foreground text-background border-foreground' : 'bg-transparent text-foreground border-border hover:border-foreground/40'
+                          )}>
+                          <span className="text-xs font-medium">{m.label}</span>
+                          <span className="text-[10px] opacity-50">{m.tag}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Разрешение</label>
+                    <div className="flex gap-1.5">
+                      {RESOLUTIONS.map(r => (
+                        <button key={r.key} type="button" onClick={() => setImageSize(r.key)}
+                          className={cn('flex-1 flex flex-col items-center justify-center gap-0.5 h-11 rounded-lg border text-center transition-colors duration-150',
+                            imageSize === r.key ? 'bg-foreground text-background border-foreground' : 'bg-transparent text-foreground border-border hover:border-foreground/40'
+                          )}>
+                          <span className="text-xs font-medium">{r.label}</span>
+                          <span className="text-[10px] opacity-50">{r.sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Стиль</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {STYLES.map(s => (
+                        <button key={s.key} type="button" onClick={() => setStyle(s.key)}
+                          className={cn('flex flex-col items-center justify-center gap-0.5 h-10 rounded-lg border text-center transition-colors duration-150',
+                            style === s.key ? 'bg-foreground text-background border-foreground' : 'bg-transparent text-foreground border-border hover:border-foreground/40'
+                          )}>
+                          <span className="text-xs font-medium">{s.label}</span>
+                          <span className="text-[10px] opacity-50">{s.tag}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Цель</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {GOALS.map(g => (
+                        <button key={g.value} type="button"
+                          onClick={() => setGoals(prev => prev.includes(g.value) ? prev.filter(v => v !== g.value) : [...prev, g.value])}
+                          className={cn('flex flex-col items-center justify-center gap-0.5 h-10 rounded-lg border text-center transition-colors duration-150',
+                            goals.includes(g.value) ? 'bg-foreground text-background border-foreground' : 'bg-transparent text-foreground border-border hover:border-foreground/40'
+                          )}>
+                          <span className="text-xs font-medium">{g.label}</span>
+                          <span className="text-[10px] opacity-50">{g.sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Язык</label>
+                    <div className="flex gap-1.5">
+                      {LANGUAGES.map(l => (
+                        <button key={l.key} type="button" onClick={() => setLanguage(l.key)}
+                          className={cn('flex-1 h-9 rounded-lg border text-xs font-medium transition-colors duration-150',
+                            language === l.key ? 'bg-foreground text-background border-foreground' : 'bg-transparent text-foreground border-border hover:border-foreground/40'
+                          )}>
+                          {l.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Отрасль</label>
+                    <Input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Онлайн-магазин, ресторан..." className="text-sm" />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Целевая аудитория</label>
+                    <Input value={targetAudience} onChange={(e) => setTargetAudience(e.target.value)} placeholder="18–35, покупатели..." className="text-sm" />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Цвета</label>
+                    <div className="space-y-2">
+                      <ColorRow value={colorBackground} onChange={setColorBackground} label="Фон" />
+                      <ColorRow value={colorAccent} onChange={setColorAccent} label="Акцент / CTA" />
+                      <ColorRow value={colorText} onChange={setColorText} label="Текст" />
+                      <ColorRow value={colorSecondary} onChange={setColorSecondary} label="Доп." />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Шрифты</label>
+                    <Input value={fonts} onChange={(e) => setFonts(e.target.value)} placeholder="Inter, Montserrat..." className="text-sm" />
+                  </div>
+
+                </div>
+              </ScrollArea>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Gallery */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">

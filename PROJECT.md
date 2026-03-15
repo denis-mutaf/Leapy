@@ -1,7 +1,7 @@
 # Leapy — Project Documentation
 
 > Справочный документ для продолжения разработки в новом чате.
-> Последнее обновление: март 2026 (актуально).
+> Последнее обновление: март 2026 (креативы: парсер товара, настройки в visual_prompt, 4 цвета, мульти-генерация, chat bootstrap).
 
 ---
 
@@ -16,7 +16,7 @@
 4. Сохраняет всё в Supabase (звонки, оценки, профили клиентов)
 5. Публикует заметки и задачи в AmoCRM
 6. RAG-система: база знаний из документов с семантическим поиском (pgvector)
-7. **Генератор креативов:** генерация рекламных баннеров через Google Gemini (Nano Banana), загрузка в Supabase Storage, доработка в чате
+7. **Генератор креативов:** универсальный инструмент для любого бизнеса — генерация рекламных баннеров через Google Gemini (Nano Banana), загрузка в Supabase Storage, доработка в чате; парсер страницы товара по URL (Claude) с автозаполнением формы и визуальным промптом
 
 ---
 
@@ -68,7 +68,7 @@
 ```
 PBX_CRM_TOKEN=         # токен для валидации вебхука от АТС
 OPENAI_API_KEY=        # для Whisper, GPT-4o-mini, embeddings
-ANTHROPIC_API_KEY=     # для Claude — анализ звонков
+ANTHROPIC_API_KEY=     # для Claude — анализ звонков и парсер товара (parse-product)
 GEMINI_API_KEY=        # для генерации креативов (Nano Banana)
 AMO_LONG_TOKEN=        # долгосрочный токен AmoCRM
 AMO_SUBDOMAIN=deniskosharny
@@ -124,8 +124,10 @@ src/
 | Метод | Путь | Описание |
 |-------|------|----------|
 | GET | `/creatives/history` | Список генераций: `select=id,created_at,model_key,format,headline,image_url,image_size`, `order=created_at.desc`, `limit=50`. Ответ: массив записей из `creative_generations`. |
-| POST | `/creatives/generate` | Генерация креатива: multipart **brandbook** (до 1), **photos** (до 3), **references** (до 5) — все поля только image/*; body: model, format, imageSize, headline, subheadline, cta, extraText, userPrompt, colors (JSON), **goals** (JSON), **systemPrompt** (опционально). В промпт передаются три группы: brandbook → «brand identity / brandbook», photos → «main composition photos», references → «reference creatives». Ответ: `{ id, image (base64), mimeType, textResponse, history, imageUrl, modelUsed }`. Загрузка в Storage `creative-images`, запись в `creative_generations`. |
-| POST | `/creatives/chat` | Доработка в чате: JSON `{ model, history, message }`. Ответ: `{ image?, mimeType?, textResponse, history, imageUrl? }`. |
+| POST | `/creatives/generate` | Генерация креатива: multipart **brandbook** (до 1), **photos** (до 3), **references** (до 5) — только image/*; body: model, format, imageSize, headline, subheadline, cta, extraText, userPrompt, **industry**, **language**, **style**, **targetAudience**, **colorBackground**, **colorAccent**, **colorText**, **colorSecondary**, **fonts**, goals (JSON), systemPrompt (опционально). Системный промпт собирается из полей (MANDATORY COLOR ROLES, DESIGN RULES). History в ответе — user parts без base64 (lean). Ответ: `{ id, image, mimeType, textResponse, history, imageUrl, modelUsed }`. |
+| POST | `/creatives/chat` | Доработка в чате: JSON `{ model, history, message, contextImageUrl? }`. Если передан **contextImageUrl** и history из одного элемента (bootstrap из галереи), бэкенд подгружает изображение по URL и подставляет в контекст. Ответ: `history` обрезается через **trimHistory** (последние 4 пары ходов, старые изображения заменены на `[previous image]`). |
+| POST | `/creatives/parse-product` | Парсер страницы товара: JSON `{ url, settings? }`. Загружает HTML по URL, извлекает og:image, отправляет в Claude (claude-haiku-4-5-20251001) до 8000 символов HTML + инструкции. **settings** (style, language, goals, targetAudience, industry, format) используются в генерации поля **visual_prompt**. Ответ: JSON с полями name, price, headline, subheadline, cta, extra_text, image_url, language, **visual_prompt** и др. Таймаут fetch 10 с. |
+| POST | `/creatives/fetch-image` | Загрузка изображения по URL: JSON `{ url }`. Проверка Content-Type image/*, таймаут 10 с. Ответ: `{ base64, mimeType, url }` или 422/500. |
 
 Модели (model key → Gemini): `nano-banana` → gemini-2.5-flash-image, `nano-banana-2` → gemini-3.1-flash-image-preview, `nano-banana-pro` → gemini-3-pro-image-preview.
 
@@ -254,7 +256,7 @@ admin/
 │   ├── globals.css           — shadcn imports, :root/.light/.dark, scrollbar-thin, --panel-header-height, --sidebar-* переменные для сайдбара
 │   └── creatives/
 │       ├── layout.js        — контейнер flex flex-col flex-1 min-h-0 overflow-hidden для страницы креативов
-│       ├── page.js          — генератор креативов: **двухпанельный layout**. Левая панель 400px («Генератор»): ScrollArea с блоками — модель/формат/разрешение/цель (кнопки), материалы (FileAttachButton: Лого 1, Композиция 3, Референсы 5), тексты (AutoResizeTextarea), промпт (Textarea), кнопка «Сгенерировать», ошибка. Правая панель — галерея (JustifiedGallery, скелетоны, пустое состояние) + чат (AnimatePresence, 320px) при «Доработать». Dialog превью (картинка, детали, Скачать/Доработать). Persistence: localStorage (ключ leapy_creatives_form, TTL 1 день), восстановление формы и файлов (base64) после монтирования. API: POST /creatives/generate (brandbook, photos, references, goals и др.), POST /creatives/chat, GET /creatives/history.
+│       ├── page.js          — генератор креативов: **двухпанельный layout**. Левая панель 400px («Генератор»): вверху **автозаполнение по ссылке товара** (поле URL + кнопка парсинга → POST /creatives/parse-product с settings, автозаполнение headline, subheadline, cta, extra_text, language, visual_prompt → userPrompt, загрузка изображения товара); модель/формат/разрешение/цель; отрасль, язык креатива (RU/RO/EN), стиль (Минимализм/Яркий/Люкс/Масс), ЦА, **цвета** (4 роли: фон, акцент/CTA, текст, доп. — color picker + hex input + очистка); шрифты; материалы — Лого 1, Пример композиции 3, **поле «Изображение по URL»** (input + кнопка → POST /creatives/fetch-image, добавление в compositionFiles), Референсы 5; тексты; промпт; кнопка «Сгенерировать» (всегда активна, несколько генераций одновременно — **activeGenerations** queue, скелетоны по одной на каждую). Правая панель — галерея (JustifiedGallery) + чат 320px при «Доработать». «Доработать» из превью: history = bootstrap с __imageUrl__, в запрос чата передаётся **contextImageUrl** (бэкенд подгружает картинку). Ошибки — dismissible. Persistence: localStorage (форма + productUrl, imageUrl, файлы base64, TTL 1 день). API: generate, chat, parse-product, fetch-image, history.
 │       └── history/
 │           └── page.js      — «История креативов»: GET /creatives/history, поиск, сетка карточек; из навигации убрана — история на /creatives
 ├── components/
@@ -281,17 +283,19 @@ admin/
 
 - **Сайдбар:** коллапсируемый (`sidebar.jsx`): градиент и разделитель по CSS-переменным; лого, кнопка сворачивания; «Навигация» — «База знаний» (/, BookOpen), «Креативы» (/creatives, Sparkles); внизу Leapy © 2026 и ThemeToggle. В свёрнутом виде — только иконки с tooltip (CollapsedNav). Ссылка «История» убрана — история встроена в страницу Креативы.
 - **Главная (/):** «База знаний» — двухколоночный layout: левая колонка 380px (загрузка документа, Спросить AI, Тест поиска), правая — таблица документов (скелетоны при загрузке, пустое состояние). Запросы к `@/lib/api` в `app/page.js`. PageTransition, framer-motion для анимации ответов.
-- **Креативы (/creatives):** двухпанельный layout. **Левая панель (400px)** — «Генератор»: модель, формат, разрешение, цель (кнопки), материалы (Лого 1, Композиция 3, Референсы 5 — FileAttachButton), тексты, промпт, кнопка «Сгенерировать». **Правая панель** — галерея (JustifiedGallery), заголовок «Генерации», Refresh; чат 320px справа при «Доработать». Клик по карточке — Dialog превью (Скачать / Доработать). Форма и файлы сохраняются в localStorage (TTL 1 день). API: `POST /creatives/generate` (brandbook, photos, references, goals и др.), `POST /creatives/chat`, `GET /creatives/history`.
+- **Креативы (/creatives):** двухпанельный layout. **Левая панель (400px)** — «Генератор»: автозаполнение по ссылке товара (URL + парсинг → parse-product с настройками формы, автозаполнение текстов и visual_prompt); модель, формат, разрешение, цель; отрасль, язык (RU/RO/EN), стиль, ЦА, 4 цвета бренда (фон/акцент/текст/доп.), шрифты; материалы (Лого, Композиция + загрузка изображения по URL), Референсы; тексты, промпт; кнопка «Сгенерировать» (поддержка нескольких одновременных генераций). **Правая панель** — галерея (JustifiedGallery), чат при «Доработать» (bootstrap из превью через contextImageUrl). Форма и URL полей в localStorage (TTL 1 день). API: generate, chat, parse-product, fetch-image, history.
 - **История креативов (/creatives/history):** страница сохранена (заголовок, счётчик, поиск, сетка карточек), из навигации убрана — список генераций отображается на /creatives.
 
 ---
 
 ## Последние изменения (креативы и админка)
 
-- **Страница Креативы (/creatives):** двухпанельный layout: левая панель 400px («Генератор») с ScrollArea — модель, формат, разрешение, цель (кнопки), материалы (FileAttachButton: Лого 1, Пример композиции 3, Референсы 5), тексты (AutoResizeTextarea), промпт (Textarea), кнопка «Сгенерировать»; правая — галерея (JustifiedGallery, justified-layout), чат 320px при «Доработать». Persistence: localStorage (leapy_creatives_form, TTL 1 день), форма + файлы (base64); восстановление в useEffect после монтирования (гидрация без ошибок).
-- **База знаний (/):** двухколоночный layout: левая 380px (загрузка, Спросить AI, Тест поиска), правая — таблица документов, скелетоны, motion.tr. PageTransition, AnimatePresence.
-- **Сайдбар и темы:** globals.css — переменные сайдбара, --panel-header-height: 57px; навигация: База знаний, Креативы; коллапсируемый сайдбар; анимации диалога.
-- **API креативов (src/creatives.js):** multer .fields([ brandbook maxCount 1, photos maxCount 3, references maxCount 5 ]), fileFilter — только image/* для всех полей; buildGenerateParts формирует три группы: brandbook → «brand identity / brandbook», photos → «main composition photos», references → «reference creatives» (каждая группа — inlineData + текст только при наличии файлов).
+- **Генератор креативов — универсальный под любой бизнес:** поля формы: отрасль, язык креатива (RU/RO/EN), стиль (Минимализм/Яркий/Люкс/Масс), целевая аудитория, 4 цвета по ролям (фон, акцент/CTA, текст, доп.) — color picker + hex + очистка, шрифты. Системный промпт в buildGenerateParts: MANDATORY COLOR ROLES, DESIGN RULES, язык и стиль из body. В ответе generate — user parts без base64 (lean history). Несколько одновременных генераций: activeGenerations (queue), кнопка не блокируется, скелетон на каждую генерацию.
+- **Чат доработки:** при «Доработать» из превью в запрос передаётся contextImageUrl; бэкенд при одном элементе в history подгружает изображение по URL и подставляет в контекст (избегаем 413). trimHistory: последние 4 пары ходов, старые изображения заменены на `[previous image]`.
+- **Парсер товара по URL:** POST /creatives/parse-product — fetch HTML, og:image, Claude извлекает name, price, headline, subheadline, cta, extra_text, image_url, language, **visual_prompt** (сцена для рекламы с учётом settings: style, goals, targetAudience, industry, format). POST /creatives/fetch-image — загрузка изображения по URL → base64. На странице креативов: блок «Автозаполнение по ссылке товара», поле «Изображение по URL» в материалах; при парсинге форма отправляет текущие settings, visual_prompt подставляется в поле «Промпт».
+- **База знаний (/):** двухколоночный layout, скелетоны, motion.tr. PageTransition, AnimatePresence.
+- **Сайдбар и темы:** globals.css — переменные сайдбара, --panel-header-height: 57px; навигация: База знаний, Креативы; коллапсируемый сайдбар.
+- **API креативов (src/creatives.js):** multer для generate; buildGenerateParts — industry, language, style, targetAudience, 4 цвета, fonts, MANDATORY COLOR ROLES; trimHistory для chat; parse-product (fetch + Claude), fetch-image.
 
 ---
 

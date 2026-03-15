@@ -181,6 +181,12 @@ function buildGenerateParts(files, body) {
   if (goals.length > 0) lines.push(`Creative goal(s): ${goals.join(', ')} — optimize the composition, message, and CTA for these objectives.`);
   if (fonts) lines.push(`FONTS — use exactly these typefaces: ${fonts}. Do not use any other fonts.`);
 
+  const benefits = Array.isArray(body.benefits) ? body.benefits : [];
+  if (benefits.length > 0) {
+    const benefitsText = benefits.filter(b => b && String(b).trim()).map(b => `• ${b}`).join('\n');
+    lines.push(`\nBENEFITS TO DISPLAY IN THE CREATIVE:\n${benefitsText}\nPlace these as visual trust elements (icons + text, badges, or a bullet list block) in the layout.`);
+  }
+
   // system prompt override or comprehensive default
   const systemPrompt = body.systemPrompt?.trim() || '';
   if (systemPrompt) {
@@ -314,6 +320,10 @@ router.post('/generate', (req, res, next) => {
 
   const modelKey = (req.body?.model || DEFAULT_MODEL_KEY).trim() || DEFAULT_MODEL_KEY;
   const modelId = getModelId(modelKey);
+  const benefits = (() => {
+    try { return JSON.parse(req.body.benefits || '[]'); } catch { return []; }
+  })();
+  req.body.benefits = benefits;
   const parts = buildGenerateParts(req.files, req.body);
 
   try {
@@ -526,45 +536,46 @@ router.post('/parse-product', async (req, res) => {
         max_tokens: 1000,
         messages: [{
           role: 'user',
-          content: `Extract product information from this HTML page and return ONLY a JSON object, no markdown, no backticks.
+          content: `You are an expert media buyer and creative director with 10 years of experience running Facebook and Instagram ad campaigns. Your job is to analyze a product page and extract everything needed to produce a high-converting ad creative.
+
+Extract product information from this HTML and return ONLY a valid JSON object — no markdown, no backticks, no explanation.
 
 Required fields:
 {
   "name": "product name",
-  "price": "price with currency",
-  "original_price": "original price if discounted, otherwise null",
-  "discount": "discount percentage or amount if visible, otherwise null",
-  "description": "short product description, max 100 chars",
-  "headline": "catchy ad headline based on product name, max 60 chars",
-  "subheadline": "benefit-focused subheadline, max 80 chars",
-  "cta": "call to action text based on language: ru=Купить сейчас, ro=Cumpără acum, en=Buy Now",
-  "extra_text": "discount badge text or promo label if any (e.g. -20%, Livrare gratuită)",
-  "image_url": "${ogImage || 'null'}",
+  "headline": "punchy ad headline, max 8 words, benefit-first, language: ${languageHint}",
+  "subheadline": "one supporting sentence expanding the headline, max 15 words, language: ${languageHint}",
+  "cta": "call to action — ru: Купить сейчас / ro: Cumpără acum / en: Buy Now",
+  "extra_text": "discount label or urgency badge if present (e.g. -20%, Ultimele bucăți), otherwise empty string",
+  "benefits": ["up to 4 short benefit strings found on the page, e.g. Livrare gratuită, Garanție 14 zile — empty array if none found"],
   "language": "${languageHint}",
+  "image_url": "${ogImage || 'null'}",
   "visual_prompt": "see instructions below"
 }
 
-VISUAL PROMPT INSTRUCTIONS:
-Write a complete English image generation prompt (max 200 chars) for a Facebook/Instagram ad creative.
+VISUAL PROMPT INSTRUCTIONS — write in English, max 220 chars:
 
-Context to apply:
-- Ad style: ${styleHint}
-- Ad goals: ${goalsHint}
-- Target audience: ${audienceHint}
+You are a senior art director briefing an AI image generator. Think like both a performance marketer (what drives clicks?) and a visual designer (what makes a thumb stop scrolling?).
+
+Your prompt must describe a complete ad scene, not just a product photo. Consider:
+1. HERO ELEMENT: the product shown in its most aspirational use context
+2. COMPOSITION: where does the product sit? (center, left third, foreground?) — leave deliberate negative space on one side for text overlay
+3. SCENE & MOOD: background, lighting, time of day, setting — chosen to appeal to: ${audienceHint}
+4. STYLE: apply ${styleHint} aesthetic to the scene
+5. FORMAT: compose for ${formatHint} aspect ratio (e.g. 9:16 = vertical, text space at top/bottom; 4:5 = slight vertical; 1:1 = centered; 16:9 = wide, text left or right)
+
+End with: "commercial photography, photorealistic, 4K, sharp focus, professional lighting, no text, no logos"
+
+EXAMPLES of good visual prompts:
+- "Modern wooden writing desk centered in bright minimalist home office, young woman working from left third, warm window light from right, open books and plant in background, deliberate empty upper zone for headline text, commercial photography, photorealistic, 4K, sharp focus, professional lighting, no text, no logos"
+- "Premium hair straightener held by woman's hand close-up, soft studio bokeh background in warm beige tones, glossy product surface catching light, lower third empty for CTA placement, commercial photography, photorealistic, 4K, sharp focus, professional lighting, no text, no logos"
+
+Ad context:
+- Style: ${styleHint}
+- Goal: ${goalsHint}
+- Audience: ${audienceHint}
+- Format: ${formatHint}
 ${industryHint ? `- Industry: ${industryHint}` : ''}
-- Format: ${formatHint} aspect ratio
-
-Rules for the visual_prompt:
-1. Product must be the hero — shown IN USE or in its natural lifestyle context
-2. Choose a scene that makes the product look most desirable to the target audience
-3. Apply the ad style to the scene description
-4. End with quality tags: "commercial photography, photorealistic, 4K, high resolution, sharp focus, professional lighting"
-5. Do NOT describe text, logos, or UI elements — only the visual scene
-
-Examples:
-- Chainsaw + bold + male audience → "powerful chainsaw splitting massive log in dense forest, sawdust explosion, dramatic golden hour backlight, commercial photography, photorealistic, 4K, high resolution, sharp focus, professional lighting"
-- Face cream + luxury + women 25-45 → "elegant woman applying premium cream in minimalist marble bathroom, soft morning light through frosted window, dewy glowing skin, commercial photography, photorealistic, 4K, high resolution, sharp focus, professional lighting"
-- Kitchen chair + minimal + families → "modern wooden chair at clean dining table set for family breakfast, warm natural light, Scandinavian interior, commercial photography, photorealistic, 4K, high resolution, sharp focus, professional lighting"
 
 HTML (first 8000 chars):
 ${html.substring(0, 8000)}`,
