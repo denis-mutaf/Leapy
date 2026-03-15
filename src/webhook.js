@@ -27,6 +27,10 @@ import {
   getPreviousCallSummaries,
   uploadAudio,
 } from './supabase.js';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -87,13 +91,40 @@ async function downloadMp3(url, callid) {
   return tmpPath;
 }
 
+async function upsampleAudio(inputPath) {
+  const outputPath = inputPath.replace('.mp3', '_16k.mp3');
+  await execFileAsync('ffmpeg', [
+    '-i', inputPath,
+    '-ar', '16000',
+    '-y',
+    outputPath,
+  ]);
+  return outputPath;
+}
+
 async function transcribeAudio(filePath) {
+  let pathToTranscribe = filePath;
+  let upsampledPath = null;
+
+  try {
+    upsampledPath = await upsampleAudio(filePath);
+    pathToTranscribe = upsampledPath;
+    console.log('[WEBHOOK] Апсемплинг выполнен');
+  } catch (err) {
+    console.warn('[WEBHOOK] Апсемплинг не удался, используем оригинал:', err.message);
+  }
+
   const transcription = await openai.audio.transcriptions.create({
-    file: fs.createReadStream(filePath),
+    file: fs.createReadStream(pathToTranscribe),
     model: 'gpt-4o-mini-transcribe',
     language: 'ro',
     prompt: 'IsraGrup, Дурлешты, Durlești, Select New Town, Next New Town, apartament, cameră, rată, avans, ipotecă, рассрочка, первый взнос, квартира, однокомнатная, двухкомнатная, этаж, парковка, bloc locativ, complex rezidențial, preț, euro, metri pătrați.',
   });
+
+  if (upsampledPath) {
+    fs.unlink(upsampledPath, () => {});
+  }
+
   return transcription.text;
 }
 

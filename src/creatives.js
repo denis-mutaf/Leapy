@@ -28,13 +28,9 @@ const memoryStorage = multer.memoryStorage();
 function fileFilter(req, file, cb) {
   const field = file.fieldname;
   const mimetype = file.mimetype || '';
-  if (field === 'brandbook') {
-    if (mimetype.startsWith('image/') || mimetype === 'application/pdf') return cb(null, true);
-    return cb(new Error('brandbook: only image/* or application/pdf allowed'));
-  }
-  if (field === 'references' || field === 'photos') {
+  if (field === 'references') {
     if (mimetype.startsWith('image/')) return cb(null, true);
-    return cb(new Error(`${field}: only image/* allowed`));
+    return cb(new Error('references: only image/* allowed'));
   }
   cb(null, true);
 }
@@ -44,9 +40,7 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter,
 }).fields([
-  { name: 'brandbook', maxCount: 5 },
-  { name: 'references', maxCount: 3 },
-  { name: 'photos', maxCount: 5 },
+  { name: 'references', maxCount: 5 },
 ]);
 
 /**
@@ -54,23 +48,7 @@ const upload = multer({
  */
 function buildGenerateParts(files, body) {
   const parts = [];
-  const brandbook = files?.brandbook || [];
   const references = files?.references || [];
-  const photos = files?.photos || [];
-
-  for (const file of brandbook) {
-    parts.push({
-      inlineData: {
-        mimeType: file.mimetype || 'application/octet-stream',
-        data: file.buffer.toString('base64'),
-      },
-    });
-  }
-  if (brandbook.length > 0) {
-    parts.push({
-      text: 'Above: brand book pages. Use the visual style, color palette, typography, and layout principles from these pages as the foundation for the creative.',
-    });
-  }
 
   for (const file of references) {
     parts.push({
@@ -83,20 +61,6 @@ function buildGenerateParts(files, body) {
   if (references.length > 0) {
     parts.push({
       text: 'Above: existing reference creatives. Replicate their overall layout, composition, and visual style.',
-    });
-  }
-
-  for (const file of photos) {
-    parts.push({
-      inlineData: {
-        mimeType: file.mimetype || 'image/png',
-        data: file.buffer.toString('base64'),
-      },
-    });
-  }
-  if (photos.length > 0) {
-    parts.push({
-      text: 'Above: new product/object photos. Feature these in the creative instead of any images from the references.',
     });
   }
 
@@ -119,7 +83,23 @@ function buildGenerateParts(files, body) {
   if (cta) lines.push(`CTA: "${cta}"`);
   if (extraText) lines.push(`Additional text / badges: "${extraText}"`);
   if (userPrompt) lines.push(`Additional instructions: ${userPrompt}`);
-  lines.push('Create a high-quality advertising creative (banner/ad) with the requirements above.');
+
+  // goals
+  const goalsRaw = body.goals;
+  let goals = [];
+  try {
+    if (typeof goalsRaw === 'string') goals = JSON.parse(goalsRaw);
+    else if (Array.isArray(goalsRaw)) goals = goalsRaw;
+  } catch (_) {}
+  if (goals.length > 0) lines.push(`Creative goal(s): ${goals.join(', ')} — optimize the composition, message, and CTA for these objectives.`);
+
+  // system prompt override or default
+  const systemPrompt = body.systemPrompt?.trim() || '';
+  if (systemPrompt) {
+    lines.push(systemPrompt);
+  } else {
+    lines.push('Create a high-quality advertising creative (banner/ad) with the requirements above.');
+  }
 
   parts.push({ text: lines.join('\n') });
   return parts;

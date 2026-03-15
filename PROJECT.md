@@ -122,7 +122,8 @@ src/
 ### Creatives (Gemini)
 | Метод | Путь | Описание |
 |-------|------|----------|
-| POST | `/creatives/generate` | Генерация креатива: multipart (brandbook[], references[], photos[], model, format, headline, subheadline, cta, extraText, userPrompt, colors). Ответ: `{ id, image (base64), mimeType, textResponse, history, imageUrl, modelUsed }`. Загрузка в Storage `creative-images`, запись в `creative_generations`. |
+| GET | `/creatives/history` | Список генераций: `select=id,created_at,model_key,format,headline,image_url,image_size`, `order=created_at.desc`, `limit=50`. Ответ: массив записей из `creative_generations`. |
+| POST | `/creatives/generate` | Генерация креатива: multipart только **references[]** (до 5 изображений); body: model, format, imageSize, headline, subheadline, cta, extraText, userPrompt, colors (JSON), **goals** (JSON, массив целей: traffic, lead, awareness, retargeting), **systemPrompt** (опционально, подменяет финальную инструкцию). Ответ: `{ id, image (base64), mimeType, textResponse, history, imageUrl, modelUsed }`. Загрузка в Storage `creative-images`, запись в `creative_generations`. |
 | POST | `/creatives/chat` | Доработка в чате: JSON `{ model, history, message }`. Ответ: `{ image?, mimeType?, textResponse, history, imageUrl? }`. |
 
 Модели (model key → Gemini): `nano-banana` → gemini-2.5-flash-image, `nano-banana-2` → gemini-3.1-flash-image-preview, `nano-banana-pro` → gemini-3-pro-image-preview.
@@ -143,7 +144,7 @@ src/
 | `call_insights` | Извлечённые данные из звонка (имя, тип недвижимости, бюджет и т.д.) |
 | `documents` | Метаданные RAG-документов |
 | `document_chunks` | Чанки с embeddings vector(1536) для семантического поиска |
-| `creative_generations` | Записи сгенерированных креативов (model_key, model_id, format, headline, subheadline, cta, extra_text, user_prompt, colors, storage_path, image_url) |
+| `creative_generations` | Записи сгенерированных креативов (model_key, model_id, format, headline, subheadline, cta, extra_text, user_prompt, colors, storage_path, image_url, **image_size**) |
 
 ### SQL-функции
 - `increment_client_calls(client_id uuid)` — атомарный инкремент счётчика звонков
@@ -237,46 +238,58 @@ POST /webhook
 - **UI:** shadcn/ui (default style, base color Zinc), CSS variables для темы
 - **Тема:** next-themes, по умолчанию dark (`defaultTheme="dark"`, `enableSystem={false}`)
 - **Шрифт:** Inter Tight (400/500), `--font-inter-tight`
-- **Утилиты:** `.scrollbar-thin` в globals.css для тонкого скроллбара; градиенты бренда (`.btn-gradient`, `.bg-gradient-leadleap`) сохранены
-- **Tailwind:** `theme.extend.colors` — shadcn (background, foreground, card, primary, muted, accent, destructive, border, input, ring и др.) + legacy (page, text, section, status)
+- **Утилиты:** `.scrollbar-thin` в globals.css для тонкого скроллбара
+- **Tailwind:** `theme.extend.colors` — shadcn (background, foreground, card, primary, muted, accent, destructive, border, input, ring и др.)
+- **Сайдбар:** градиентный фон (`--sidebar-gradient` в :root и .light), вертикальный разделитель (`--sidebar-divider`), цвета текста/ховера/активного состояния через переменные (`--sidebar-text`, `--sidebar-hover`, `--sidebar-active`, `--sidebar-border`, `--sidebar-label`) для поддержки светлой и тёмной темы
+- **Высота заголовков панелей:** единая константа `--panel-header-height: 57px` в globals.css; заголовки (сайдбар, галерея генераций, чат, модалка превью) выровнены по высоте
 
 ### Структура
 
 ```
 admin/
 ├── app/
-│   ├── layout.js            — сайдбар (лого, SidebarNav, ThemeToggle), ThemeProvider, main
-│   ├── page.js              — страница «База знаний»: все секции в одном файле (Card, Button, Input, Textarea, Label, Badge), логика загрузки/документов/ask/search inlined
-│   ├── globals.css           — shadcn imports, :root/.light/.dark, утилиты, scrollbar-thin
+│   ├── layout.js            — ThemeProvider, Sidebar (collapsible), main (flex-1 min-h-0 flex flex-col)
+│   ├── page.js              — «База знаний»: двухколоночный layout (flex). Левая колонка 380px: загрузка документа, Спросить AI (Textarea + ответ с источниками), Тест поиска; правая — таблица документов (скелетоны при загрузке, пустое состояние, motion.tr для строк). PageTransition, framer-motion (AnimatePresence для ответов). Запросы к @/lib/api.
+│   ├── globals.css           — shadcn imports, :root/.light/.dark, scrollbar-thin, --panel-header-height, --sidebar-* переменные для сайдбара
 │   └── creatives/
-│       ├── layout.js        — полноширинный контейнер для двухпанельного layout
-│       └── page.js          — генератор креативов: левая панель (модель, формат, FileDropZone x3, ColorPicker, тексты, кнопка), правая (пусто/загрузка/результат + чат)
+│       ├── layout.js        — полноширинный контейнер для страницы креативов
+│       ├── page.js          — генератор креативов: **вертикальный layout**. Сверху — галерея (flex-1, скролл): заголовок «Генерации», счётчик, Refresh; скелетон при загрузке; пустое состояние; grid карточек (minmax(220px, 1fr)); чат (AnimatePresence, motion.div 320px) выезжает справа при «Доработать». Снизу — **генератор-бар** (shrink-0): центральная карточка max-w-3xl с ImageUploadButton (референсы до 5, вставка из буфера), textarea промпта (Enter = генерация), кнопка «Настройки», кнопка «Сгенерировать» (градиент). Панель **Настройки** (showSettings, AnimatePresence): модель, формат, разрешение, цель (GOALS мультиселект), цвета, тексты, промпт + системный промпт. Dialog превью без изменений. API: POST /creatives/generate (references, goals, systemPrompt), POST /creatives/chat, GET /creatives/history
+│       └── history/
+│           └── page.js      — «История креативов»: загрузка GET /creatives/history, поиск, сетка карточек (превью, формат, модель, заголовок, дата), скачивание по клику (страница есть, из навигации убрана — история встроена в /creatives)
 ├── components/
-│   ├── ui/                   — shadcn: button, card, input, textarea, label, badge, scroll-area, separator, tooltip
+│   ├── ui/                   — shadcn: button, card, input, textarea, label, badge, scroll-area, separator, tooltip, dialog
+│   ├── sidebar.jsx           — коллапсируемый сайдбар: фон var(--sidebar-gradient), разделитель var(--sidebar-divider), заголовок height var(--panel-header-height), цвета через --sidebar-*; лого, SidebarNav / CollapsedNav, ThemeToggle, footer Leapy © 2026
 │   ├── theme-provider.jsx    — next-themes ThemeProvider
 │   ├── theme-toggle.jsx      — переключатель светлая/тёмная тема
-│   ├── nav-link.jsx         — ссылка навигации с иконкой, active по usePathname
-│   ├── sidebar-nav.jsx      — клиентский блок навигации (NavLink x2: База знаний, Креативы), иконки lucide
-│   ├── NavLink.jsx          — (legacy, для обратной совместимости)
-│   ├── UploadForm.jsx        — (legacy, логика перенесена в page.js)
-│   ├── DocumentList.jsx     — (legacy)
-│   ├── AskAI.jsx            — (legacy)
-│   └── SearchTest.jsx       — (legacy)
+│   ├── nav-link.jsx          — ссылка навигации с иконкой, active по usePathname
+│   ├── sidebar-nav.jsx       — NavLink x2: База знаний (/), Креативы (/creatives); заголовок «Навигация» (BookOpen, Sparkles)
+│   └── …                    — (legacy: NavLink.jsx, UploadForm, DocumentList, AskAI, SearchTest при наличии)
 ├── lib/
 │   ├── api.js                — uploadDocument, getDocuments, deleteDocument, searchDocuments, generateTitle, askQuestion
 │   └── utils.js              — cn() для shadcn
 ├── public/
 │   └── leadleap_logo.svg
-├── tailwind.config.cjs       — shadcn colors (hsl(var(--*))), borderRadius lg/md/sm, fontFamily, legacy colors
+├── next.config.js            — ESM (path, fileURLToPath), outputFileTracingRoot
+├── tailwind.config.cjs       — shadcn colors (hsl(var(--*))), borderRadius, fontFamily
 ├── components.json           — shadcn (style default, baseColor zinc, cssVariables)
 └── .env.local                — NEXT_PUBLIC_API_URL
 ```
 
 ### Навигация и страницы
 
-- **Сайдбар:** лого (Link на /), «Навигация» — «База знаний» (/, BookOpen), «Креативы» (/creatives, Sparkles); внизу копирайт LeadLeap © 2026 и ThemeToggle.
-- **Главная (/):** «База знаний» — заголовок, затем карточки: загрузка документа (drag-and-drop, название, кнопка Загрузить), таблица документов (обновить, удалить), «Спросить AI» (textarea + ответ + источники), «Тест поиска» (input + результаты). Вся логика и запросы к `@/lib/api` в `app/page.js`.
-- **Креативы (/creatives):** левая панель — выбор модели (Nano Banana / 2 / Pro), формат (1:1, 9:16, 16:9, 4:5, 1:4), три зоны файлов (брендбук, референсы, фото), цвета бренда, тексты, доп. промпт, кнопка «Сгенерировать». Правая панель — пустое состояние / загрузка / результат (картинка, тулбар: модель, «Дорабатывать в чате», Скачать, Перегенерировать; при включённом чате — панель чата с историей и вводом). API: `POST /creatives/generate` (FormData), `POST /creatives/chat` (JSON).
+- **Сайдбар:** коллапсируемый (`sidebar.jsx`): градиент и разделитель по CSS-переменным; лого, кнопка сворачивания; «Навигация» — «База знаний» (/, BookOpen), «Креативы» (/creatives, Sparkles); внизу Leapy © 2026 и ThemeToggle. В свёрнутом виде — только иконки с tooltip (CollapsedNav). Ссылка «История» убрана — история встроена в страницу Креативы.
+- **Главная (/):** «База знаний» — двухколоночный layout: левая колонка 380px (загрузка документа, Спросить AI, Тест поиска), правая — таблица документов (скелетоны при загрузке, пустое состояние). Запросы к `@/lib/api` в `app/page.js`. PageTransition, framer-motion для анимации ответов.
+- **Креативы (/creatives):** вертикальный layout. **Сверху — галерея:** заголовок «Генерации», счётчик, кнопка обновления; скелетон при генерации; пустое состояние; grid карточек (auto-fill, minmax(220px, 1fr)); клик по карточке — Dialog с превью и «Детали» (Скачать / Доработать). Чат (320px) выезжает справа при «Доработать». **Снизу — генератор-бар:** карточка по центру (max-w-3xl): ImageUploadButton (референсы до 5, вставка из буфера), textarea «Опиши что хочешь сгенерировать» (Enter = генерация), кнопка «Настройки», кнопка «Сгенерировать». Кнопка «Настройки» открывает панель: модель (OptionButton), формат, разрешение, цель (GOALS — мультиселект), цвета (ColorPicker), тексты (AutoResizeTextarea), промпт + системный промпт. API: `POST /creatives/generate` (references, goals, systemPrompt, imageSize и др.), `POST /creatives/chat`, `GET /creatives/history`.
+- **История креативов (/creatives/history):** страница сохранена (заголовок, счётчик, поиск, сетка карточек), из навигации убрана — список генераций отображается на /creatives.
+
+---
+
+## Последние изменения (креативы и админка)
+
+- **Страница Креативы (/creatives):** реструктурирована в **вертикальный layout**: сверху галерея (скролл, grid карточек minmax(220px, 1fr)), снизу фиксированный генератор-бар. В баре — центральная карточка с ImageUploadButton (референсы до 5 файлов, вставка из буфера по Ctrl+V), textarea основного промпта (Enter запускает генерацию), кнопки «Настройки» и «Сгенерировать» (градиентная). Панель «Настройки» (showSettings): модель, формат, разрешение, цель (GOALS — мультиселект: трафик, заявка, узнаваемость, ретаргетинг), цвета, тексты (заголовок, подзаголовок, CTA, доп. текст), промпт пользователя и системный промпт. FileDropZone удалён; референсы только через ImageUploadButton. Цели (goals) и системный промпт (systemPrompt) передаются в POST /creatives/generate; бэкенд принимает только references[] (multer), в промпте — goals и опциональный systemPrompt.
+- **База знаний (/):** двухколоночный layout: левая колонка 380px (загрузка, Спросить AI, Тест поиска), правая — таблица документов со скелетонами при загрузке и motion.tr для строк. PageTransition, AnimatePresence для ответов.
+- **Сайдбар и темы:** в globals.css — переменные сайдбара, --panel-header-height: 57px; навигация: База знаний, Креативы; AnimatePresence для переключения открытого/свёрнутого нава. Кастомные анимации диалога (dialog-overlay/show-hide) в globals.css.
+- **API/БД:** POST /creatives/generate — только references[] (до 5), body: goals (JSON), systemPrompt; brandbook и photos убраны на бэкенде (src/creatives.js).
 
 ---
 
