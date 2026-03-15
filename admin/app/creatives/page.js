@@ -91,7 +91,7 @@ function AutoResizeTextarea({ value, onChange, placeholder, className }) {
   );
 }
 
-function PhotoUploadZone({ logoFiles, onLogoChange, compositionFiles, onCompositionChange, referenceFiles, onReferenceChange }) {
+function PhotoUploadZone({ compositionFiles, onCompositionChange, referenceFiles, onReferenceChange }) {
   const fileInputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
   const [loadingUrls, setLoadingUrls] = useState(new Set());
@@ -118,14 +118,10 @@ function PhotoUploadZone({ logoFiles, onLogoChange, compositionFiles, onComposit
     if (files.length) onCompositionChange(prev => [...prev, ...files].slice(0, 3));
   };
 
-  const allThumbs = [
-    ...logoFiles.map(f => ({ file: f, type: 'logo' })),
-    ...compositionFiles.map(f => ({ file: f, type: 'composition' })),
-  ];
+  const allThumbs = compositionFiles.map(f => ({ file: f, type: 'composition' }));
 
-  const removeThumb = (type, thumbIndex) => {
-    if (type === 'logo') onLogoChange([]);
-    else onCompositionChange(prev => prev.filter((_, i) => i !== thumbIndex - logoFiles.length));
+  const removeThumb = (thumbIndex) => {
+    onCompositionChange(prev => prev.filter((_, i) => i !== thumbIndex));
   };
 
   return (
@@ -174,11 +170,11 @@ function PhotoUploadZone({ logoFiles, onLogoChange, compositionFiles, onComposit
 
       {allThumbs.length > 0 && (
         <div className="flex gap-1.5 flex-wrap">
-          {allThumbs.map(({ file, type }, i) => {
+          {allThumbs.map(({ file }, i) => {
             const url = URL.createObjectURL(file);
             return (
               <motion.div
-                key={`${type}-${i}`}
+                key={i}
                 initial={{ opacity: 0, scale: 0.85 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.15 }}
@@ -190,12 +186,9 @@ function PhotoUploadZone({ logoFiles, onLogoChange, compositionFiles, onComposit
                   className="w-full h-full object-cover"
                   onLoad={() => URL.revokeObjectURL(url)}
                 />
-                {type === 'logo' && (
-                  <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-[8px] text-white text-center py-0.5">лого</div>
-                )}
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); removeThumb(type, i); }}
+                  onClick={(e) => { e.stopPropagation(); removeThumb(i); }}
                   className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <X className="h-2.5 w-2.5" />
@@ -203,26 +196,6 @@ function PhotoUploadZone({ logoFiles, onLogoChange, compositionFiles, onComposit
               </motion.div>
             );
           })}
-
-          {logoFiles.length === 0 && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                const inp = document.createElement('input');
-                inp.type = 'file'; inp.accept = 'image/*';
-                inp.onchange = (ev) => {
-                  const f = ev.target.files?.[0];
-                  if (f) onLogoChange([f]);
-                };
-                inp.click();
-              }}
-              className="w-14 h-14 rounded-lg border border-dashed border-border bg-muted/50 flex flex-col items-center justify-center gap-0.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
-            >
-              <ImageIcon className="h-3 w-3" />
-              <span className="text-[8px]">лого</span>
-            </button>
-          )}
 
           <button
             type="button"
@@ -536,6 +509,8 @@ export default function CreativesPage() {
   const [imageUrlLoading, setImageUrlLoading] = useState(false);
   const [imageUrlError, setImageUrlError] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [price, setPrice] = useState('');
+  const parseDebounceRef = useRef(null);
 
   useEffect(() => {
     const saved = loadForm();
@@ -558,6 +533,7 @@ export default function CreativesPage() {
       if (saved.cta != null) setCta(saved.cta);
       if (saved.extraText != null) setExtraText(saved.extraText);
       if (Array.isArray(saved.benefits)) setBenefits(saved.benefits.length ? saved.benefits : ['']);
+      if (saved.price != null) setPrice(saved.price);
       if (saved.userPrompt != null) setUserPrompt(saved.userPrompt);
       if (saved.logoFiles?.length) setLogoFiles(base64ToFiles(saved.logoFiles));
       if (saved.compositionFiles?.length) setCompositionFiles(base64ToFiles(saved.compositionFiles));
@@ -588,6 +564,7 @@ export default function CreativesPage() {
         cta,
         extraText,
         benefits,
+        price,
         userPrompt,
         productUrl,
         imageUrl,
@@ -613,6 +590,7 @@ export default function CreativesPage() {
     cta,
     extraText,
     benefits,
+    price,
     userPrompt,
     productUrl,
     imageUrl,
@@ -650,8 +628,11 @@ export default function CreativesPage() {
     }
   }, [imageUrl, API_URL]);
 
-  const handleParseProduct = useCallback(async () => {
-    if (!productUrl.trim() || !API_URL) return;
+  const handleParseProduct = useCallback(async (urlOverride) => {
+    const url = urlOverride ?? productUrl;
+    if (!url?.trim() || !API_URL) return;
+    setCompositionFiles([]);
+    setImageUrl('');
     setParsing(true);
     setParseError('');
     try {
@@ -659,7 +640,7 @@ export default function CreativesPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          url: productUrl,
+          url,
           settings: {
             style,
             language,
@@ -679,6 +660,7 @@ export default function CreativesPage() {
       if (data.subheadline) setSubheadline(data.subheadline);
       if (data.cta) setCta(data.cta);
       if (data.extra_text) setExtraText(data.extra_text);
+      if (data.price) setPrice(data.price);
       if (data.language) setLanguage(data.language);
       if (data.visual_prompt) setUserPrompt(data.visual_prompt);
       if (Array.isArray(data.benefits) && data.benefits.length > 0) {
@@ -728,6 +710,7 @@ export default function CreativesPage() {
     form.append('subheadline', subheadline);
     form.append('cta', cta);
     form.append('extraText', extraText);
+    form.append('price', price);
     form.append('benefits', JSON.stringify(benefits.filter(b => b.trim())));
     form.append('userPrompt', userPrompt);
     form.append('goals', JSON.stringify(goals));
@@ -775,6 +758,7 @@ export default function CreativesPage() {
     subheadline,
     cta,
     extraText,
+    price,
     benefits,
     userPrompt,
     goals,
@@ -889,23 +873,45 @@ export default function CreativesPage() {
           {/* 1. URL autofill */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Ссылка на товар</label>
-            <div className="flex gap-2">
+            <div className="relative">
+              <div
+                className="absolute inset-0 rounded-lg pointer-events-none"
+                style={{
+                  padding: '1.5px',
+                  background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 50%, #f97316 100%)',
+                  borderRadius: '10px',
+                  WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+                  WebkitMaskComposite: 'xor',
+                  maskComposite: 'exclude',
+                }}
+              />
               <Input
                 value={productUrl}
-                onChange={(e) => setProductUrl(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setProductUrl(val);
+                  if (parseDebounceRef.current) clearTimeout(parseDebounceRef.current);
+                  if (val.trim().startsWith('http')) {
+                    parseDebounceRef.current = setTimeout(() => {
+                      handleParseProduct(val);
+                    }, 800);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && productUrl.trim()) {
+                    if (parseDebounceRef.current) clearTimeout(parseDebounceRef.current);
+                    handleParseProduct(productUrl);
+                  }
+                }}
                 placeholder="https://topmag.md/product/..."
-                className="flex-1 text-sm"
+                className="relative text-sm border-transparent bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
                 disabled={parsing}
               />
-              <Button
-                type="button"
-                size="sm"
-                disabled={parsing || !productUrl.trim()}
-                onClick={handleParseProduct}
-                className="shrink-0"
-              >
-                {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              </Button>
+              {parsing && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                </div>
+              )}
             </div>
             {parseError && (
               <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 rounded-lg p-3">
@@ -917,10 +923,18 @@ export default function CreativesPage() {
             )}
           </div>
 
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Цена</label>
+            <Input
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              placeholder="1 299 lei"
+              className="text-sm"
+            />
+          </div>
+
           {/* 2. Photo upload */}
           <PhotoUploadZone
-            logoFiles={logoFiles}
-            onLogoChange={setLogoFiles}
             compositionFiles={compositionFiles}
             onCompositionChange={setCompositionFiles}
             referenceFiles={referenceFiles}
@@ -1042,6 +1056,47 @@ export default function CreativesPage() {
               </div>
               <ScrollArea className="flex-1">
                 <div className="px-4 py-4 space-y-5">
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Лого</label>
+                    {logoFiles.length === 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const inp = document.createElement('input');
+                          inp.type = 'file';
+                          inp.accept = 'image/*';
+                          inp.onchange = (e) => {
+                            const f = e.target.files?.[0];
+                            if (f) setLogoFiles([f]);
+                          };
+                          inp.click();
+                        }}
+                        className="w-full h-9 rounded-lg border border-dashed border-border bg-muted/50 flex items-center justify-center gap-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      >
+                        <ImageIcon className="h-3.5 w-3.5" />
+                        Загрузить лого
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-border bg-muted shrink-0 group">
+                          <img
+                            src={URL.createObjectURL(logoFiles[0])}
+                            alt="logo"
+                            className="w-full h-full object-contain p-1"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setLogoFiles([])}
+                            className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X className="h-2.5 w-2.5" />
+                          </button>
+                        </div>
+                        <span className="text-xs text-muted-foreground truncate">{logoFiles[0].name}</span>
+                      </div>
+                    )}
+                  </div>
 
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Модель</label>

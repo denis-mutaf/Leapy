@@ -169,6 +169,7 @@ function buildGenerateParts(files, body) {
   if (subheadline) lines.push(`Subheadline: "${subheadline}"`);
   if (cta) lines.push(`CTA: "${cta}"`);
   if (extraText) lines.push(`Additional text / badges: "${extraText}"`);
+  if (body.price) lines.push(`Price to display: ${body.price}`);
   if (userPrompt) lines.push(`Additional instructions: ${userPrompt}`);
 
   // goals
@@ -320,6 +321,7 @@ router.post('/generate', (req, res, next) => {
 
   const modelKey = (req.body?.model || DEFAULT_MODEL_KEY).trim() || DEFAULT_MODEL_KEY;
   const modelId = getModelId(modelKey);
+  const price = req.body.price || '';
   const benefits = (() => {
     try { return JSON.parse(req.body.benefits || '[]'); } catch { return []; }
   })();
@@ -543,6 +545,7 @@ Extract product information from this HTML and return ONLY a valid JSON object �
 Required fields:
 {
   "name": "product name",
+  "price": "product price with currency as shown on the page, e.g. 1 299 lei or 49.99 USD, empty string if not found",
   "headline": "punchy ad headline, max 8 words, benefit-first, language: ${languageHint}",
   "subheadline": "one supporting sentence expanding the headline, max 15 words, language: ${languageHint}",
   "cta": "call to action — ru: Купить сейчас / ro: Cumpără acum / en: Buy Now",
