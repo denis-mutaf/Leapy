@@ -626,6 +626,7 @@ export default function CreativesPage() {
       if (data.cta) setCta(data.cta);
       if (data.extra_text) setExtraText(data.extra_text);
       if (data.language) setLanguage(data.language);
+      if (data.visual_prompt) setUserPrompt(data.visual_prompt);
       if (data.image_url && data.image_url !== 'null') {
         setImageUrl(data.image_url);
         handleFetchImageUrl(data.image_url);

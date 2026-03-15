@@ -517,8 +517,24 @@ Required fields:
   "cta": "call to action text (Купить сейчас / Cumpără acum etc)",
   "extra_text": "discount badge text or promo label if any (e.g. -20%, Livrare gratuită)",
   "image_url": "${ogImage || 'null'}",
-  "language": "ru or ro or en based on page language"
+  "language": "ru or ro or en based on page language",
+  "visual_prompt": "see instructions below"
 }
+
+VISUAL PROMPT INSTRUCTIONS:
+For "visual_prompt" — write a short English prompt (max 120 chars) describing the ideal lifestyle scene for this product in a Facebook/Instagram ad.
+Rules:
+- The product must be the hero of the scene, shown IN USE or in its natural context
+- Think like an art director: where would this product look most desirable?
+- Examples:
+  - Chainsaw → "chainsaw cutting a large log in a forest, sawdust flying, golden hour light, cinematic"
+  - Hair brush → "woman brushing shiny hair in front of mirror, soft morning light, clean bathroom"
+  - Steam iron → "steam iron gliding over white shirt on ironing board, steam rising, bright laundry room"
+  - Kitchen chair → "elegant chair at a set dining table, warm evening light, cozy home interior"
+  - Face cream → "woman applying cream in front of mirror, dewy skin, minimal bathroom, natural light"
+  - Drill → "man drilling into wall mounting a shelf, focused expression, modern apartment"
+- Do NOT describe the ad layout, text, or logo — only the visual scene
+- Make it photorealistic and specific
 
 HTML (first 8000 chars):
 ${html.substring(0, 8000)}`,
