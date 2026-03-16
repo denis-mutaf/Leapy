@@ -1,7 +1,7 @@
 # Leapy — Project Documentation
 
 > Справочный документ для продолжения разработки в новом чате.
-> Последнее обновление: март 2026 (креативы: парсер товара, настройки в visual_prompt, 4 цвета, мульти-генерация, chat bootstrap).
+> Последнее обновление: март 2026 (креативы: парсер товара, настройки в visual_prompt, 4 цвета, мульти-генерация, chat bootstrap, oklch пресет, ресайз креативов, price/benefits).
 
 ---
 
@@ -54,10 +54,10 @@
 
 ### Фронтенд (`leapy-admin`)
 - **Framework:** Next.js 15 (App Router), JavaScript (не TypeScript)
-- **UI:** shadcn/ui (Zinc, CSS variables), next-themes (dark/light), framer-motion, lucide-react
-- **Стили:** Tailwind CSS 3 + CSS custom properties (градиенты бренда, тёмная тема по умолчанию)
+- **UI:** shadcn/ui (preset **base-mira**, baseColor `mist`, CSS variables на основе **oklch**), next-themes (dark/light), framer-motion, lucide-react
+- **Стили:** Tailwind CSS 3 + CSS custom properties (градиенты бренда, тёмная тема по умолчанию, цвета читаются напрямую из `var(--*)`, без `hsl(var(--*))` — совместимо с oklch)
 - **Шрифт:** Inter Tight (Google Fonts, через `next/font/google`)
-- **Конфиги:** `postcss.config.cjs`, `tailwind.config.cjs`, `components.json` (shadcn)
+- **Конфиги:** `postcss.config.cjs`, `tailwind.config.cjs`, `components.json` (shadcn preset, cssVariables, baseColor `mist`)
 - **Деплой:** Vercel, ветка `main` репо `denis-mutaf/leapy-admin`
 
 ---
@@ -238,12 +238,12 @@ POST /webhook
 
 ### Дизайн
 
-- **UI:** shadcn/ui (default style, base color Zinc), CSS variables для темы
+- **UI:** shadcn/ui (preset **base-mira**, baseColor `mist`), CSS variables в oklch (`--background`, `--foreground`, `--primary`, `--secondary` и т.д.)
 - **Тема:** next-themes, по умолчанию dark (`defaultTheme="dark"`, `enableSystem={false}`)
 - **Шрифт:** Inter Tight (400/500), `--font-inter-tight`
-- **Утилиты:** `.scrollbar-thin` в globals.css для тонкого скроллбара
-- **Tailwind:** `theme.extend.colors` — shadcn (background, foreground, card, primary, muted, accent, destructive, border, input, ring и др.)
-- **Сайдбар:** градиентный фон (`--sidebar-gradient` в :root и .light), вертикальный разделитель (`--sidebar-divider`), цвета текста/ховера/активного состояния через переменные (`--sidebar-text`, `--sidebar-hover`, `--sidebar-active`, `--sidebar-border`, `--sidebar-label`) для поддержки светлой и тёмной темы
+- **Утилиты:** `.scrollbar-thin` в globals.css для тонкого скроллбара (использует `var(--border)`), кастомные Radix Dialog анимации
+- **Tailwind:** `theme.extend.colors` читает цвета напрямую из `var(--*)` (background, foreground, card, primary, muted, accent, destructive, border, input, ring и др.) — дружит с oklch-переменными
+- **Сайдбар:** градиентный фон (`--sidebar-gradient` в :root и .dark), вертикальный разделитель (`--sidebar-divider`), цвета текста/ховера/активного состояния через переменные (`--sidebar-text`, `--sidebar-hover`, `--sidebar-active`, `--sidebar-border`, `--sidebar-label`) для поддержки светлой и тёмной темы
 - **Высота заголовков панелей:** единая константа `--panel-header-height: 57px` в globals.css; заголовки (сайдбар, галерея генераций, чат, модалка превью) выровнены по высоте
 
 ### Структура
@@ -253,10 +253,10 @@ admin/
 ├── app/
 │   ├── layout.js            — ThemeProvider, Sidebar (collapsible), main (flex-1 min-h-0 flex flex-col)
 │   ├── page.js              — «База знаний»: двухколоночный layout (flex). Левая колонка 380px: загрузка документа, Спросить AI (Textarea + ответ с источниками), Тест поиска; правая — таблица документов (скелетоны при загрузке, пустое состояние, motion.tr для строк). PageTransition, framer-motion (AnimatePresence для ответов). Запросы к @/lib/api.
-│   ├── globals.css           — shadcn imports, :root/.light/.dark, scrollbar-thin, --panel-header-height, --sidebar-* переменные для сайдбара
+│   ├── globals.css           — shadcn imports, :root/.dark с oklch-палитрой пресета, scrollbar-thin, --panel-header-height, --sidebar-* переменные для сайдбара
 │   └── creatives/
 │       ├── layout.js        — контейнер flex flex-col flex-1 min-h-0 overflow-hidden для страницы креативов
-│       ├── page.js          — генератор креативов: **двухпанельный layout**. Левая панель 400px («Генератор»): вверху **автозаполнение по ссылке товара** (поле URL + кнопка парсинга → POST /creatives/parse-product с settings, автозаполнение headline, subheadline, cta, extra_text, language, visual_prompt → userPrompt, загрузка изображения товара); модель/формат/разрешение/цель; отрасль, язык креатива (RU/RO/EN), стиль (Минимализм/Яркий/Люкс/Масс), ЦА, **цвета** (4 роли: фон, акцент/CTA, текст, доп. — color picker + hex input + очистка); шрифты; материалы — Лого 1, Пример композиции 3, **поле «Изображение по URL»** (input + кнопка → POST /creatives/fetch-image, добавление в compositionFiles), Референсы 5; тексты; промпт; кнопка «Сгенерировать» (всегда активна, несколько генераций одновременно — **activeGenerations** queue, скелетоны по одной на каждую). Правая панель — галерея (JustifiedGallery) + чат 320px при «Доработать». «Доработать» из превью: history = bootstrap с __imageUrl__, в запрос чата передаётся **contextImageUrl** (бэкенд подгружает картинку). Ошибки — dismissible. Persistence: localStorage (форма + productUrl, imageUrl, файлы base64, TTL 1 день). API: generate, chat, parse-product, fetch-image, history.
+│       ├── page.js          — генератор креативов: **двухпанельный layout**. Левая панель 400px («Генератор»): компактная форма с автозаполнением по ссылке товара (поле URL с градиентной рамкой, авто-парсинг с debounce 800мс → POST /creatives/parse-product, автозаполнение headline, subheadline, cta, extra_text, language, **price**, **benefits**, visual_prompt → userPrompt, загрузка изображения товара); блок «Фото товара» (новый `PhotoUploadZone` с drag&drop и вставкой по ⌘V, до 3 композиций + до 5 референсов); блок формата; блок текстов (headline, subheadline, CTA, бейдж); блок «Преимущества» (до 4 строк); промпт; кнопка «Сгенерировать» (несколько генераций одновременно — **activeGenerations** queue, скелетоны по одной на каждую), отображение ошибок. Правая панель — галерея (JustifiedGallery) + чат 320px при «Доработать». В превью есть блок ресайза: кнопки для конвертации креатива в другие форматы (1:1, 9:16, 16:9, 4:5) через повторный вызов generate с исходным изображением. «Доработать» из превью: history = bootstrap с __imageUrl__, в запрос чата передаётся **contextImageUrl** (бэкенд подгружает картинку). Ошибки — dismissible. Persistence: localStorage (форма + productUrl, imageUrl, price, benefits, файлы base64, TTL 1 день). API: generate, chat, parse-product, fetch-image, history.
 │       └── history/
 │           └── page.js      — «История креативов»: GET /creatives/history, поиск, сетка карточек; из навигации убрана — история на /creatives
 ├── components/
@@ -274,8 +274,8 @@ admin/
 ├── public/
 │   └── leadleap_logo.svg
 ├── next.config.js            — ESM (path, fileURLToPath), outputFileTracingRoot
-├── tailwind.config.cjs       — shadcn colors (hsl(var(--*))), borderRadius, fontFamily
-├── components.json           — shadcn (style default, baseColor zinc, cssVariables)
+├── tailwind.config.cjs       — shadcn colors (читаются как `var(--*)`, совместимы с oklch), borderRadius, fontFamily
+├── components.json           — shadcn (style base-mira, baseColor mist, cssVariables)
 └── .env.local                — NEXT_PUBLIC_API_URL
 ```
 
@@ -290,12 +290,12 @@ admin/
 
 ## Последние изменения (креативы и админка)
 
-- **Генератор креативов — универсальный под любой бизнес:** поля формы: отрасль, язык креатива (RU/RO/EN), стиль (Минимализм/Яркий/Люкс/Масс), целевая аудитория, 4 цвета по ролям (фон, акцент/CTA, текст, доп.) — color picker + hex + очистка, шрифты. Системный промпт в buildGenerateParts: MANDATORY COLOR ROLES, DESIGN RULES, язык и стиль из body. В ответе generate — user parts без base64 (lean history). Несколько одновременных генераций: activeGenerations (queue), кнопка не блокируется, скелетон на каждую генерацию.
-- **Чат доработки:** при «Доработать» из превью в запрос передаётся contextImageUrl; бэкенд при одном элементе в history подгружает изображение по URL и подставляет в контекст (избегаем 413). trimHistory: последние 4 пары ходов, старые изображения заменены на `[previous image]`.
-- **Парсер товара по URL:** POST /creatives/parse-product — fetch HTML, og:image, Claude извлекает name, price, headline, subheadline, cta, extra_text, image_url, language, **visual_prompt** (сцена для рекламы с учётом settings: style, goals, targetAudience, industry, format). POST /creatives/fetch-image — загрузка изображения по URL → base64. На странице креативов: блок «Автозаполнение по ссылке товара», поле «Изображение по URL» в материалах; при парсинге форма отправляет текущие settings, visual_prompt подставляется в поле «Промпт».
-- **База знаний (/):** двухколоночный layout, скелетоны, motion.tr. PageTransition, AnimatePresence.
-- **Сайдбар и темы:** globals.css — переменные сайдбара, --panel-header-height: 57px; навигация: База знаний, Креативы; коллапсируемый сайдбар.
-- **API креативов (src/creatives.js):** multer для generate; buildGenerateParts — industry, language, style, targetAudience, 4 цвета, fonts, MANDATORY COLOR ROLES; trimHistory для chat; parse-product (fetch + Claude), fetch-image.
+- **oklch-пресет shadcn:** фронтенд переведён на пресет base-mira (baseColor `mist`), цвета в globals.css заданы через oklch, Tailwind читает их через `var(--*)`. Сайдбар и высота заголовков по-прежнему контролируются проектными переменными (`--sidebar-*`, `--panel-header-height`).
+- **Генератор креативов — расширенная форма:** добавлены поля **Цена** и **Преимущества** (benefits), сохраняются в localStorage и отправляются в generate. Автопарсер товара (`/creatives/parse-product`) теперь возвращает и заполняет price и benefits (до 4 коротких строк преимуществ).
+- **Новый UX левой панели и настройки:** левая панель упрощена (URL, цена, фото, формат, тексты, преимущества, промпт, генерация), расширенные настройки (модель, разрешение, стиль, цели, язык, отрасль, ЦА, 4 цвета, шрифты) вынесены в правую выезжающую панель «Настройки» (иконка шестерёнки). Материалы разбиты: логотип загружается в настройках (как brandbook), фото товара/референсы — в отдельном блоке `PhotoUploadZone` с drag&drop и вставкой по буферу.
+- **Ресайз креативов из превью:** в модалке превью добавлен блок «Ресайз в другой формат» — можно пересобрать готовый креатив в другие форматы (1:1, 9:16, 16:9, 4:5) через повторный вызов `/creatives/generate` с исходным изображением и специальным resize-промптом.
+- **Чат доработки и история:** чат по-прежнему использует `contextImageUrl` и `trimHistory` (последние 4 пары ходов, старые изображения заменяются на `[previous image]`), история генераций отображается на /creatives, поддерживаются параллельные генерации (`activeGenerations`).
+- **API креативов (src/creatives.js):** в `buildGenerateParts` добавлены `benefits` и `price` в текст инструкций; для `parse-product` переписан промпт Claude (более жёсткая схема JSON, визуальный промпт до 220 символов, учёт style/goals/audience/format/industry); добавлен блок **LOGO RULES (CRITICAL)**, который жёстко регламентирует использование логотипа (без переработки, без эффектов, фиксированные позиции, «locked layer»).
 
 ---
 

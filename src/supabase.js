@@ -1,5 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
+const PROJECT_ID = process.env.PROJECT_ID;
+if (!PROJECT_ID) throw new Error('PROJECT_ID env variable is required');
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
@@ -18,6 +21,7 @@ export async function findOrCreateClient(phone) {
     .from('clients')
     .select('*')
     .eq('phone', phone)
+    .eq('project_id', PROJECT_ID)
     .maybeSingle();
 
   if (findErr) throw new Error(`[DB] Ошибка поиска клиента: ${findErr.message}`);
@@ -27,7 +31,7 @@ export async function findOrCreateClient(phone) {
   // Create new client
   const { data: created, error: createErr } = await supabase
     .from('clients')
-    .insert({ phone })
+    .insert({ phone, project_id: PROJECT_ID })
     .select()
     .single();
 
@@ -48,6 +52,7 @@ export async function findManagerByPbxUser(pbxUser) {
     .from('managers')
     .select('*')
     .eq('pbx_user', pbxUser)
+    .eq('project_id', PROJECT_ID)
     .maybeSingle();
 
   if (error) {
@@ -72,7 +77,7 @@ export async function findManagerByPbxUser(pbxUser) {
 export async function createCall(callData) {
   const { data, error } = await supabase
     .from('calls')
-    .insert(callData)
+    .insert({ ...callData, project_id: PROJECT_ID })
     .select()
     .single();
 
@@ -106,7 +111,7 @@ export async function updateCall(callId, updates) {
 export async function saveEvaluation(evalData) {
   const { error } = await supabase
     .from('evaluations')
-    .insert(evalData);
+    .insert({ ...evalData, project_id: PROJECT_ID });
 
   if (error) throw new Error(`[DB] Ошибка сохранения оценки: ${error.message}`);
 }
@@ -120,7 +125,7 @@ export async function saveEvaluation(evalData) {
 export async function saveCallInsights(insightsData) {
   const { error } = await supabase
     .from('call_insights')
-    .insert(insightsData);
+    .insert({ ...insightsData, project_id: PROJECT_ID });
 
   if (error) throw new Error(`[DB] Ошибка сохранения insights: ${error.message}`);
 }
@@ -208,6 +213,7 @@ export async function getPreviousCallSummaries(clientId, limit = 5) {
     .from('calls')
     .select('created_at, transcript')
     .eq('client_id', clientId)
+    .eq('project_id', PROJECT_ID)
     .eq('status', 'completed')
     .order('created_at', { ascending: false })
     .limit(limit);
