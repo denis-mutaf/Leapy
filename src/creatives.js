@@ -8,6 +8,7 @@ const router = Router();
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL?.replace(/\/$/, '');
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const PROJECT_ID = process.env.PROJECT_ID;
 
 const MODEL_MAP = {
   'nano-banana': 'gemini-2.5-flash-image',
@@ -363,6 +364,7 @@ router.post('/generate', (req, res, next) => {
     const colors = [colorBackground, colorAccent, colorText, colorSecondary].filter(Boolean);
 
     const row = {
+      project_id: PROJECT_ID || null,
       model_key: modelKey,
       model_id: modelId,
       format: req.body.format || null,
@@ -656,7 +658,7 @@ router.get('/history', async (req, res) => {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
     return res.status(500).json({ error: 'SUPABASE_URL and SUPABASE_SERVICE_KEY are required' });
   }
-  const url = `${SUPABASE_URL}/rest/v1/creative_generations?select=id,created_at,model_key,format,headline,image_url&order=created_at.desc&limit=50`;
+  const url = `${SUPABASE_URL}/rest/v1/creative_generations?select=id,created_at,model_key,format,headline,image_url&order=created_at.desc&limit=50${PROJECT_ID ? `&project_id=eq.${PROJECT_ID}` : ''}`;
   try {
     const response = await fetch(url, {
       method: 'GET',
