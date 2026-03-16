@@ -489,7 +489,7 @@ async function evaluateManager(transcript, ragContext) {
     };
 
     const scoreValues = Object.values(scores);
-    const score_total = Math.round(scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length);
+    const score_total = scoreValues.reduce((a, b) => a + b, 0);
 
     return {
       ...scores,
