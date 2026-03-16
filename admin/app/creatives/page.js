@@ -846,6 +846,65 @@ export default function CreativesPage() {
     }
   };
 
+  const handleResize = useCallback(async (item, targetFormat) => {
+    if (!API_URL || !item?.image_url) return;
+    setPreviewItem(null);
+    setError('');
+
+    const genId = crypto.randomUUID();
+    setActiveGenerations((prev) => [...prev, { id: genId, status: 'loading', format: targetFormat }]);
+
+    try {
+      const resp = await fetch(item.image_url);
+      const blob = await resp.blob();
+      const imageFile = new File([blob], 'source.png', { type: blob.type || 'image/png' });
+
+      const [srcW, srcH] = (item.format || '1:1').split(':').map(Number);
+      const [tgtW, tgtH] = targetFormat.split(':').map(Number);
+      const srcRatio = srcW && srcH ? `${srcW}:${srcH}` : '1:1';
+      const tgtRatio = tgtW && tgtH ? `${tgtW}:${tgtH}` : targetFormat;
+
+      const resizePrompt = `Resize this ad creative from ${srcRatio} to ${tgtRatio} aspect ratio. Preserve all visual elements exactly: headline text, subheadline, CTA button, price, benefits list, logo position, color scheme, and overall design style. Recompose the layout to fit the new canvas — reposition elements naturally to avoid cropping. Do not add new elements. Do not remove any existing elements. Maintain the same visual hierarchy and brand identity.`;
+
+      const form = new FormData();
+      form.append('model', selectedModel);
+      form.append('format', targetFormat);
+      form.append('imageSize', imageSize);
+      form.append('userPrompt', resizePrompt);
+      form.append('goals', JSON.stringify(goals));
+      form.append('industry', industry);
+      form.append('language', language);
+      form.append('style', style);
+      form.append('targetAudience', targetAudience);
+      form.append('colorBackground', colorBackground);
+      form.append('colorAccent', colorAccent);
+      form.append('colorText', colorText);
+      form.append('colorSecondary', colorSecondary);
+      form.append('fonts', fonts);
+      form.append('headline', item.headline || '');
+      form.append('photos', imageFile);
+      logoFiles.forEach((f) => form.append('brandbook', f));
+
+      const res = await fetch(`${API_URL}/creatives/generate`, { method: 'POST', body: form });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setActiveGenerations((prev) => prev.filter((g) => g.id !== genId));
+        setError(data.error || data.details || `Ошибка ${res.status}`);
+        return;
+      }
+
+      setActiveGenerations((prev) => prev.map((g) => g.id === genId ? { ...g, status: 'done' } : g));
+      await loadHistory();
+      setTimeout(() => {
+        setActiveGenerations((prev) => prev.filter((g) => g.id !== genId));
+      }, 1000);
+    } catch (e) {
+      setActiveGenerations((prev) => prev.filter((g) => g.id !== genId));
+      setError(e.message || 'Ошибка сети');
+    }
+  }, [API_URL, selectedModel, imageSize, goals, industry, language, style, targetAudience, colorBackground, colorAccent, colorText, colorSecondary, fonts, logoFiles]);
+
   const showEmptyState = activeGenerations.length === 0 && historyItems.length === 0;
 
   return (
@@ -1360,6 +1419,22 @@ export default function CreativesPage() {
                   {previewItem.format && <Badge variant="outline">{previewItem.format}</Badge>}
                   {previewItem.model_key && <Badge variant="secondary">{MODEL_LABELS[previewItem.model_key]}</Badge>}
                   {previewItem.image_size && <Badge variant="outline">{previewItem.image_size}</Badge>}
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">Ресайз в другой формат</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {FORMATS.filter(f => f.value !== previewItem.format).map(f => (
+                      <button
+                        key={f.value}
+                        type="button"
+                        onClick={() => handleResize(previewItem, f.value)}
+                        className="flex flex-col items-center justify-center gap-0.5 h-10 rounded-lg border border-border text-center hover:border-foreground/40 hover:bg-accent transition-colors duration-150"
+                      >
+                        <span className="text-xs font-medium">{f.value}</span>
+                        <span className="text-[10px] text-muted-foreground">{f.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 {previewItem.headline && (
                   <div>

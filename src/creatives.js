@@ -59,7 +59,7 @@ function buildGenerateParts(files, body) {
       });
     }
     parts.push({
-      text: 'Above: brand identity / brandbook. Use these colors, fonts, and visual style strictly.',
+      text: 'Above: the brand logo. Apply LOGO RULES (CRITICAL) in the instructions — use it exactly as provided, do not modify.',
     });
   }
 
@@ -149,15 +149,24 @@ function buildGenerateParts(files, body) {
   }
 
   systemLines.push('');
+  if (brandbook.length > 0) {
+    systemLines.push('## LOGO RULES (CRITICAL — never violate):');
+    systemLines.push('- Place the logo exactly as provided, without any modifications whatsoever');
+    systemLines.push('- Do NOT recolor, rescale disproportionately, rotate, distort, add effects, shadows, glows, or outlines to the logo');
+    systemLines.push('- Do NOT recreate or redraw the logo — use it as a static, untouched element');
+    systemLines.push('- Position: top-right or bottom-right corner, with clear padding from edges');
+    systemLines.push('- The logo must always be visible and legible, never obscured by other elements');
+    systemLines.push('- Treat the logo as a locked layer that sits independently above all other compositional elements');
+    systemLines.push('');
+  }
   systemLines.push('## DESIGN RULES');
-  systemLines.push('- Follow the brandbook strictly if provided (colors, fonts, logo placement)');
   systemLines.push('- Use provided photos as the main visual content — do not replace or alter them');
   systemLines.push('- Replicate the layout and composition style from reference creatives if provided');
   systemLines.push('- All text must be legible, crisp, properly sized and positioned');
   systemLines.push('- The headline must be the most prominent text element');
   systemLines.push('- CTA must be clearly visible, preferably in a button or highlighted element');
   systemLines.push('- Do NOT add watermarks, placeholder text, lorem ipsum, or any text not specified');
-  systemLines.push('- Do NOT add logos or brand elements not provided in the materials');
+  if (brandbook.length === 0) systemLines.push('- Do NOT add logos or brand elements not provided in the materials');
   systemLines.push('- Output must be pixel-perfect, ready for paid advertising — no drafts, no mockups');
   systemLines.push('');
   systemLines.push('## OUTPUT');
