@@ -358,7 +358,7 @@ export async function searchKnowledgeBase(query, options = {}) {
   const queryEmbedding = await getQueryEmbedding(query);
 
   const { data, error } = await supabase.rpc('search_documents', {
-    query_embedding: JSON.stringify(queryEmbedding),
+    query_embedding: queryEmbedding,
     match_count: limit,
     similarity_threshold: threshold,
   });
